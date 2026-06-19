@@ -197,16 +197,16 @@ let autoSaveTimer = null;
 async function fetchPrices(){
   if (pricesBusy) return;
   pricesBusy = true; renderLedger();
-  const tickers = [...new Set(board.positions.filter(p=>p.ticker).map(p=>p.ticker))];
-  if (!tickers.length){ pricesBusy=false; renderLedger(); return; }
+  const tickerKeys = [...new Set(board.positions.filter(p=>p.ticker).map(p=>(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0')))];
+  if (!tickerKeys.length){ pricesBusy=false; renderLedger(); return; }
   try{
-    const r = await fetch(API_URL + '?action=prices&tickers=' + encodeURIComponent(tickers.join(',')));
+    const r = await fetch(API_URL + '?action=prices&tickers=' + encodeURIComponent(tickerKeys.join(',')));
     const res = await r.json();
     if (res && res.ok){
       prices = res.prices || {};
       pricesAt = new Date();
       const found = Object.keys(prices).length;
-      toast(found+'/'+tickers.length+'개 현재가 조회 완료');
+      toast(found+'/'+tickerKeys.length+'개 현재가 조회 완료');
     } else {
       toast('현재가 조회 실패');
     }
@@ -347,6 +347,10 @@ function renderList(){
       const b2 = document.createElement("div"); b2.appendChild(labEl("주식수")); b2.appendChild(numInputEl(p.shares,"120", v=>p.shares=v));
       gridB.appendChild(b1); gridB.appendChild(b2); card.appendChild(gridB);
 
+      card.appendChild(labEl("시장"));
+      const mktSeg=mk("div","seg");
+      [["KOSPI","코스피"],["KOSDAQ","코스닥"]].forEach(([k,ko])=>{ const b=document.createElement("button"); b.textContent=ko; if((p.market||"KOSPI")===k) b.className="on valid"; b.onclick=()=>{ p.market=k; renderList(); }; mktSeg.appendChild(b); });
+      card.appendChild(mktSeg);
       card.appendChild(labEl("상태")); card.appendChild(segEl(p));
       card.appendChild(labEl("메인 아이디어 (논거)"));
       const ta = document.createElement("textarea"); ta.className="f"; ta.rows=3; ta.value=p.idea||"";
@@ -363,7 +367,7 @@ function renderList(){
 
   if (editing){
     const add = mk("button","btn","＋ 종목 추가"); add.style.alignSelf="flex-start"; add.style.marginTop="2px";
-    add.onclick=()=>{ board.positions.push({ name:"", ticker:"", status:"valid", avgPrice:0, shares:0, idea:"", note:"" }); renderList(); renderLedger(); };
+    add.onclick=()=>{ board.positions.push({ name:"", ticker:"", market:"KOSPI", status:"valid", avgPrice:0, shares:0, idea:"", note:"" }); renderList(); renderLedger(); };
     list.appendChild(add);
   }
 }
@@ -421,7 +425,8 @@ function renderLedger(){
       const w=Number(p.weight)||0;
       const tr=document.createElement("tr");
       if (showReturns){
-        const cp=prices[p.ticker]||null;
+        const priceKey=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');
+        const cp=prices[priceKey]||null;
         const avg=Number(p.avgPrice)||0;
         const sh=Number(p.shares)||0;
         const cpCell=cp?`<td class="num">${fmtN(cp)}</td>`:`<td class="num">—</td>`;
@@ -443,7 +448,7 @@ function renderLedger(){
     const tf=document.createElement("tfoot");
     if(showReturns){
       const totCost=board.positions.reduce((s,p)=>s+(Number(p.avgPrice)||0)*(Number(p.shares)||0),0);
-      const totCur=board.positions.reduce((s,p)=>{const cp=prices[p.ticker];const sh=Number(p.shares)||0;return s+(cp&&sh?cp*sh:0);},0);
+      const totCur=board.positions.reduce((s,p)=>{const pk=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');const cp=prices[pk];const sh=Number(p.shares)||0;return s+(cp&&sh?cp*sh:0);},0);
       let totRet=`<td class="num">—</td>`;
       if(totCost>0&&totCur>0){const r=(totCur-totCost)/totCost*100;const rc=r>=0?"pos":"neg";const rs=r>=0?"+":"";totRet=`<td class="num"><span class="ret ${rc}">${rs}${r.toFixed(2)}%</span></td>`;}
       tf.innerHTML=`<tr><td>합계</td><td class="num">—</td>${totRet}<td class="num">${totCur>0?fmtN(Math.round(totCur)):"—"}</td><td class="num">100%</td></tr>`;
