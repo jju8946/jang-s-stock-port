@@ -192,6 +192,7 @@ let historyOpen = false, historyItems = null, historyLoading = false;
 let cusdisLoaded = false;
 let prices = {}, pricesAt = null, showReturns = false, pricesBusy = false;
 let autoSaveTimer = null;
+let privatePositions = {}; // ticker → {avgPrice, shares} — localStorage 캐시
 
 /* ── 현재가 조회 (Apps Script → 네이버 금융) ── */
 async function fetchPrices(){
@@ -294,7 +295,13 @@ async function tryUnlock(v){
   pwBusy=true; pwError=false; renderActions();
   try{
     const res = await apiPost({ action:"auth", password:v });
-    if (res && res.ok && res.board){ sessionPassword=v; board=res.board; editing=true; askingPw=false; pwError=false; }
+    if (res && res.ok && res.board){
+      sessionPassword=v; board=res.board; editing=true; askingPw=false; pwError=false;
+      const priv={};
+      board.positions.forEach(p=>{ priv[p.ticker]={avgPrice:p.avgPrice,shares:p.shares}; });
+      privatePositions=priv;
+      localStorage.setItem('private_positions', JSON.stringify(priv));
+    }
     else pwError=true;
   }catch(e){ pwError=true; toast("확인 실패 — 네트워크/주소를 확인하세요"); }
   pwBusy=false; renderAll();
@@ -428,8 +435,9 @@ function renderLedger(){
       if (showReturns){
         const priceKey=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');
         const cp=prices[priceKey]||null;
-        const avg=Number(p.avgPrice)||0;
-        const sh=Number(p.shares)||0;
+        const priv=privatePositions[p.ticker]||{};
+        const avg=Number(p.avgPrice)||Number(priv.avgPrice)||0;
+        const sh=Number(p.shares)||Number(priv.shares)||0;
         const cpCell=cp?`<td class="num">${fmtN(cp)}</td>`:`<td class="num">—</td>`;
         let retCell=`<td class="num">—</td>`, valCell=`<td class="num">—</td>`;
         if(cp&&avg>0){
@@ -448,8 +456,8 @@ function renderLedger(){
     t.appendChild(tb);
     const tf=document.createElement("tfoot");
     if(showReturns){
-      const totCost=board.positions.reduce((s,p)=>s+(Number(p.avgPrice)||0)*(Number(p.shares)||0),0);
-      const totCur=board.positions.reduce((s,p)=>{const pk=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');const cp=prices[pk];const sh=Number(p.shares)||0;return s+(cp&&sh?cp*sh:0);},0);
+      const totCost=board.positions.reduce((s,p)=>{const priv=privatePositions[p.ticker]||{};const avg=Number(p.avgPrice)||Number(priv.avgPrice)||0;const sh=Number(p.shares)||Number(priv.shares)||0;return s+avg*sh;},0);
+      const totCur=board.positions.reduce((s,p)=>{const pk=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');const cp=prices[pk];const priv=privatePositions[p.ticker]||{};const sh=Number(p.shares)||Number(priv.shares)||0;return s+(cp&&sh?cp*sh:0);},0);
       let totRet=`<td class="num">—</td>`;
       if(totCost>0&&totCur>0){const r=(totCur-totCost)/totCost*100;const rc=r>=0?"pos":"neg";const rs=r>=0?"+":"";totRet=`<td class="num"><span class="ret ${rc}">${rs}${r.toFixed(2)}%</span></td>`;}
       tf.innerHTML=`<tr><td>합계</td><td class="num">—</td>${totRet}<td class="num">${totCur>0?fmtN(Math.round(totCur)):"—"}</td><td class="num">100%</td></tr>`;
@@ -544,6 +552,8 @@ function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg
 try {
   const cached = JSON.parse(localStorage.getItem('prices_cache') || 'null');
   if (cached && cached.prices) { prices = cached.prices; pricesAt = new Date(cached.pricesAt); }
+  const cachedPriv = JSON.parse(localStorage.getItem('private_positions') || 'null');
+  if (cachedPriv) privatePositions = cachedPriv;
 } catch(e) {}
 load();
 document.getElementById('site-updated').textContent = fmt(new Date(document.lastModified));
