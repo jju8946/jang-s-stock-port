@@ -103,6 +103,15 @@
   .wval{ position:relative; z-index:1; }
   .ledger-cap{ font-family:var(--font-mono); font-size:11px; color:var(--ink-3); margin-top:11px; text-align:center; }
 
+  .ledger-hdr{ display:flex; align-items:center; gap:10px; margin-bottom:13px; }
+  .ledger-hdr-text{ font-family:var(--font-mono); font-size:11px; letter-spacing:.03em; color:var(--ink-2); white-space:nowrap; }
+  .ledger-hdr-line{ flex:1; height:1px; background:var(--line); }
+  .ledger-controls{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .price-at{ font-family:var(--font-mono); font-size:11px; color:var(--ink-3); }
+  .ret{ font-family:var(--font-mono); font-size:12.5px; font-weight:600; }
+  .ret.pos{ color:var(--valid); }
+  .ret.neg{ color:var(--broken); }
+
   #comments{ margin-top:38px; }
   #comments .clab{ font-family:var(--font-mono); font-size:11px; letter-spacing:.03em; color:var(--ink-2); display:flex; align-items:center; gap:11px; margin-bottom:16px; }
   #comments .clab::after{ content:""; flex:1; height:1px; background:var(--line); }
@@ -181,6 +190,28 @@ let editing = false, askingPw = false, pwError = false, pwBusy = false, saving =
 let sessionPassword = null;  // 검증된 비번을 세션 동안만 메모리 보관(새로고침 시 사라짐)
 let historyOpen = false, historyItems = null, historyLoading = false;
 let cusdisLoaded = false;
+let prices = {}, pricesAt = null, showReturns = false, pricesBusy = false;
+let autoSaveTimer = null;
+
+/* ── 현재가 조회 (Apps Script → 네이버 금융) ── */
+async function fetchPrices(){
+  if (pricesBusy) return;
+  pricesBusy = true; renderLedger();
+  const tickers = [...new Set(board.positions.filter(p=>p.ticker).map(p=>p.ticker))];
+  if (!tickers.length){ pricesBusy=false; renderLedger(); return; }
+  try{
+    const res = await apiPost({ action:'prices', tickers });
+    if (res && res.ok){
+      prices = res.prices || {};
+      pricesAt = new Date();
+      const found = Object.keys(prices).length;
+      toast(found+'/'+tickers.length+'개 현재가 조회 완료');
+    } else {
+      toast('현재가 조회 실패');
+    }
+  }catch(e){ toast('현재가 조회 실패'); }
+  pricesBusy = false; renderLedger();
+}
 
 /* ── API ── */
 async function apiGet(){ const r = await fetch(API_URL, { method:"GET" }); return await r.json(); }
@@ -200,12 +231,22 @@ async function load(){
   renderAll();
 }
 
-async function save(){
+function scheduleAutoSave(){
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(()=>{ if(editing) save(true); }, 1500);
+}
+
+async function save(isAuto=false){
   if (saving) return;
   saving = true; renderSavebar();
   try{
     const res = await apiPost({ action:"save", password:sessionPassword, board:board });
-    if (res && res.ok){ toast("저장됨"); editing=false; saving=false; await load(); return; }
+    if (res && res.ok){
+      toast(isAuto ? "자동저장 완료" : "저장됨");
+      saving=false;
+      if (!isAuto){ editing=false; await load(); return; }
+      renderSavebar(); return;
+    }
     if (res && res.error === "auth"){ toast("비밀번호가 만료됐어요 — 다시 수정을 눌러주세요"); editing=false; sessionPassword=null; saving=false; await load(); return; }
     toast("저장 실패 — 다시 시도해 주세요");
   }catch(e){ toast("저장 실패 — 네트워크/주소를 확인하세요"); }
@@ -266,7 +307,7 @@ function renderOverall(){
     const box = mk("div","overall"); box.appendChild(mk("span","lab","전체 메모 (선택)"));
     const ta = document.createElement("textarea"); ta.className="f"; ta.rows=2; ta.value=board.overall||"";
     ta.placeholder="포트폴리오 전체에 대한 한 줄 — 비중 방향, 현금 비중, 이번 주 관전 포인트 등";
-    ta.oninput=()=>{ board.overall=ta.value; }; box.appendChild(ta); host.appendChild(box);
+    ta.oninput=()=>{ board.overall=ta.value; scheduleAutoSave(); }; box.appendChild(ta); host.appendChild(box);
   } else if (board.overall && board.overall.trim()){
     const box = mk("div","overall"); box.appendChild(mk("span","lab","전체 메모"));
     const p = document.createElement("div"); p.textContent=board.overall; box.appendChild(p); host.appendChild(box);
@@ -308,10 +349,10 @@ function renderList(){
       card.appendChild(labEl("상태")); card.appendChild(segEl(p));
       card.appendChild(labEl("메인 아이디어 (논거)"));
       const ta = document.createElement("textarea"); ta.className="f"; ta.rows=3; ta.value=p.idea||"";
-      ta.placeholder="이 종목을 보유한 핵심 이유 + 무엇이 바뀌면 생각을 접을지"; ta.oninput=()=>{ p.idea=ta.value; }; card.appendChild(ta);
+      ta.placeholder="이 종목을 보유한 핵심 이유 + 무엇이 바뀌면 생각을 접을지"; ta.oninput=()=>{ p.idea=ta.value; scheduleAutoSave(); }; card.appendChild(ta);
       card.appendChild(labEl("메모 (선택)"));
       const tn = document.createElement("textarea"); tn.className="f"; tn.rows=2; tn.value=p.note||"";
-      tn.placeholder="오늘 체크한 것 — 신규 공시, 실적, 주가 이탈 등"; tn.oninput=()=>{ p.note=tn.value; }; card.appendChild(tn);
+      tn.placeholder="오늘 체크한 것 — 신규 공시, 실적, 주가 이탈 등"; tn.oninput=()=>{ p.note=tn.value; scheduleAutoSave(); }; card.appendChild(tn);
 
       const foot = mk("div","card-edit-foot"); const del = mk("button","btn danger sm","삭제");
       del.onclick=()=>{ board.positions.splice(i,1); renderList(); renderLedger(); }; foot.appendChild(del); card.appendChild(foot);
@@ -351,21 +392,64 @@ function renderLedger(){
     if (total===0) sec.appendChild(mk("div","ledger-cap","평균매수단가와 주식수를 입력하면 매수금액·비중이 계산돼요."));
     host.appendChild(sec);
   } else {
-    // 공개 모드 — 비중만
+    // 공개 모드
     const tw = board.positions.reduce((s,p)=> s + (Number(p.weight)||0), 0);
     if (tw<=0) return;
-    const sec = mk("section","ledger"); sec.appendChild(mk("div","section-lab","포트 구성 · 비중"));
+    const sec = mk("section","ledger");
+
+    // 헤더 행 (라벨 + 구분선 + 버튼들)
+    const hdr = mk("div","ledger-hdr");
+    hdr.appendChild(mk("span","ledger-hdr-text","포트 구성 · 비중"));
+    hdr.appendChild(mk("span","ledger-hdr-line",""));
+    const ctrl = mk("div","ledger-controls");
+    if (pricesAt) ctrl.appendChild(mk("span","price-at","업데이트 "+fmt(pricesAt)));
+    const updBtn = mk("button","btn sm", pricesBusy?"조회 중…":"업데이트");
+    updBtn.disabled=pricesBusy; updBtn.onclick=()=>fetchPrices(); ctrl.appendChild(updBtn);
+    const togBtn = mk("button","btn sm"+(showReturns?" primary":""), showReturns?"수익률 숨기기":"수익률 보기");
+    togBtn.onclick=()=>{ showReturns=!showReturns; renderLedger(); }; ctrl.appendChild(togBtn);
+    hdr.appendChild(ctrl); sec.appendChild(hdr);
+
     const t = document.createElement("table"); t.className="ledger-t";
-    t.innerHTML = "<thead><tr><th>종목</th><th>비중</th></tr></thead>";
+    if (showReturns){
+      t.innerHTML = "<thead><tr><th>종목</th><th>현재가</th><th>수익률</th><th>평가금액</th><th>비중</th></tr></thead>";
+    } else {
+      t.innerHTML = "<thead><tr><th>종목</th><th>비중</th></tr></thead>";
+    }
     const tb = document.createElement("tbody");
     board.positions.forEach(p=>{
       const w=Number(p.weight)||0;
-      const wcell = w>0 ? `<td class="num"><span class="wcell"><span class="wbar" style="width:${w.toFixed(0)}%"></span><span class="wval">${w.toFixed(1)}%</span></span></td>` : `<td class="num">—</td>`;
-      const tr=document.createElement("tr"); tr.innerHTML = `<td class="nm">${esc(p.name||"(이름 없음)")}</td>`+wcell; tb.appendChild(tr);
+      const tr=document.createElement("tr");
+      if (showReturns){
+        const cp=prices[p.ticker]||null;
+        const avg=Number(p.avgPrice)||0;
+        const sh=Number(p.shares)||0;
+        const cpCell=cp?`<td class="num">${fmtN(cp)}</td>`:`<td class="num">—</td>`;
+        let retCell=`<td class="num">—</td>`, valCell=`<td class="num">—</td>`;
+        if(cp&&avg>0){
+          const ret=(cp-avg)/avg*100; const rc=ret>=0?"pos":"neg"; const rs=ret>=0?"+":"";
+          retCell=`<td class="num"><span class="ret ${rc}">${rs}${ret.toFixed(2)}%</span></td>`;
+          if(sh>0) valCell=`<td class="num">${fmtN(Math.round(cp*sh))}</td>`;
+        }
+        const wcell=w>0?`<td class="num">${w.toFixed(1)}%</td>`:`<td class="num">—</td>`;
+        tr.innerHTML=`<td class="nm">${esc(p.name||"(이름 없음)")}</td>${cpCell}${retCell}${valCell}${wcell}`;
+      } else {
+        const wcell=w>0?`<td class="num"><span class="wcell"><span class="wbar" style="width:${w.toFixed(0)}%"></span><span class="wval">${w.toFixed(1)}%</span></span></td>`:`<td class="num">—</td>`;
+        tr.innerHTML=`<td class="nm">${esc(p.name||"(이름 없음)")}</td>`+wcell;
+      }
+      tb.appendChild(tr);
     });
     t.appendChild(tb);
-    const tf=document.createElement("tfoot"); tf.innerHTML = `<tr><td>합계</td><td class="num">100%</td></tr>`; t.appendChild(tf);
-    sec.appendChild(t); host.appendChild(sec);
+    const tf=document.createElement("tfoot");
+    if(showReturns){
+      const totCost=board.positions.reduce((s,p)=>s+(Number(p.avgPrice)||0)*(Number(p.shares)||0),0);
+      const totCur=board.positions.reduce((s,p)=>{const cp=prices[p.ticker];const sh=Number(p.shares)||0;return s+(cp&&sh?cp*sh:0);},0);
+      let totRet=`<td class="num">—</td>`;
+      if(totCost>0&&totCur>0){const r=(totCur-totCost)/totCost*100;const rc=r>=0?"pos":"neg";const rs=r>=0?"+":"";totRet=`<td class="num"><span class="ret ${rc}">${rs}${r.toFixed(2)}%</span></td>`;}
+      tf.innerHTML=`<tr><td>합계</td><td class="num">—</td>${totRet}<td class="num">${totCur>0?fmtN(Math.round(totCur)):"—"}</td><td class="num">100%</td></tr>`;
+    } else {
+      tf.innerHTML=`<tr><td>합계</td><td class="num">100%</td></tr>`;
+    }
+    t.appendChild(tf); sec.appendChild(t); host.appendChild(sec);
   }
 }
 
@@ -393,7 +477,7 @@ function renderComments(){
 function renderSavebar(){
   const host = document.getElementById("savebar-host"); host.innerHTML = "";
   if (!editing) return;
-  const bar = mk("div","savebar"); bar.appendChild(mk("span","hint","저장해야 공개 화면에 반영돼요"));
+  const bar = mk("div","savebar"); bar.appendChild(mk("span","hint","메모 입력 후 1.5초 뒤 자동저장"));
   const right = mk("div","right");
   const cancel = mk("button","btn","취소"); cancel.disabled=saving; cancel.onclick=()=>{ editing=false; load(); };
   const savebtn = mk("button","btn primary", saving?"저장 중…":"저장"); savebtn.disabled=saving; savebtn.onclick=()=>save();
