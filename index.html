@@ -115,6 +115,12 @@
   .cmt-body{ font-size:14px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word; line-height:1.55; }
 
   .ledger-hdr{ display:flex; align-items:center; gap:10px; margin-bottom:13px; }
+  .donut-wrap{ display:flex; align-items:center; gap:28px; margin-top:20px; flex-wrap:wrap; justify-content:center; }
+  .donut-legend{ display:flex; flex-direction:column; gap:7px; }
+  .donut-leg-item{ display:flex; align-items:center; gap:9px; font-size:13.5px; }
+  .donut-dot{ width:10px; height:10px; border-radius:50%; flex:none; }
+  .donut-name{ color:var(--ink); }
+  .donut-pct{ font-family:var(--font-mono); font-size:12.5px; color:var(--ink-2); margin-left:4px; }
   .ledger-hdr-text{ font-family:var(--font-mono); font-size:11px; letter-spacing:.03em; color:var(--ink-2); white-space:nowrap; }
   .ledger-hdr-line{ flex:1; height:1px; background:var(--line); }
   .ledger-controls{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
@@ -391,6 +397,25 @@ function renderList(){
   }
 }
 
+const DONUT_COLORS = ['#0F4C5C','#2E7D54','#2196A5','#B5851A','#7C5CBF','#C7553A','#3A9AD9','#5BAE8F','#E5873A','#6B7280'];
+
+function buildDonut(positions) {
+  const tw = positions.reduce((s,p)=>s+(Number(p.weight)||0),0);
+  if(tw<=0) return null;
+  const cx=100,cy=100,ro=78,ri=50;
+  let paths='', angle=-Math.PI/2;
+  positions.forEach((p,i)=>{
+    const w=(Number(p.weight)||0)/tw;
+    if(w<=0) return;
+    const a=w*Math.PI*2, ea=angle+a, large=a>Math.PI?1:0;
+    const c1=[Math.cos(angle),Math.sin(angle)], c2=[Math.cos(ea),Math.sin(ea)];
+    const d=`M${(cx+ri*c1[0]).toFixed(1)},${(cy+ri*c1[1]).toFixed(1)} L${(cx+ro*c1[0]).toFixed(1)},${(cy+ro*c1[1]).toFixed(1)} A${ro},${ro} 0 ${large},1 ${(cx+ro*c2[0]).toFixed(1)},${(cy+ro*c2[1]).toFixed(1)} L${(cx+ri*c2[0]).toFixed(1)},${(cy+ri*c2[1]).toFixed(1)} A${ri},${ri} 0 ${large},0 ${(cx+ri*c1[0]).toFixed(1)},${(cy+ri*c1[1]).toFixed(1)}`;
+    paths+=`<path d="${d}" fill="${DONUT_COLORS[i%DONUT_COLORS.length]}" stroke="#fff" stroke-width="2"/>`;
+    angle=ea;
+  });
+  return paths;
+}
+
 function renderLedger(){
   const host = document.getElementById("ledger-host"); host.innerHTML = "";
   if (stateName!=="ok" || board.positions.length===0) return;
@@ -459,7 +484,7 @@ function renderLedger(){
         const wcell=w>0?`<td class="num">${w.toFixed(1)}%</td>`:`<td class="num">—</td>`;
         tr.innerHTML=`<td class="nm">${esc(p.name||"(이름 없음)")}</td>${cpCell}${retCell}${valCell}${wcell}`;
       } else {
-        const wcell=w>0?`<td class="num"><span class="wcell"><span class="wbar" style="width:${w.toFixed(0)}%"></span><span class="wval">${w.toFixed(1)}%</span></span></td>`:`<td class="num">—</td>`;
+        const wcell=w>0?`<td class="num">${w.toFixed(1)}%</td>`:`<td class="num">—</td>`;
         tr.innerHTML=`<td class="nm">${esc(p.name||"(이름 없음)")}</td>`+wcell;
       }
       tb.appendChild(tr);
@@ -475,7 +500,31 @@ function renderLedger(){
     } else {
       tf.innerHTML=`<tr><td>합계</td><td class="num">100%</td></tr>`;
     }
-    t.appendChild(tf); sec.appendChild(t); host.appendChild(sec);
+    t.appendChild(tf); sec.appendChild(t);
+
+    // 도넛 차트
+    const donutPaths = buildDonut(board.positions);
+    if(donutPaths){
+      const wrap = mk("div","donut-wrap");
+      const svgEl = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svgEl.setAttribute('viewBox','0 0 200 200'); svgEl.setAttribute('width','160'); svgEl.setAttribute('height','160');
+      svgEl.style.flexShrink='0';
+      svgEl.innerHTML = donutPaths;
+      wrap.appendChild(svgEl);
+      const leg = mk("div","donut-legend");
+      board.positions.forEach((p,i)=>{
+        const w=Number(p.weight)||0; if(w<=0) return;
+        const item=mk("div","donut-leg-item");
+        const dot=mk("span","donut-dot"); dot.style.background=DONUT_COLORS[i%DONUT_COLORS.length];
+        item.appendChild(dot);
+        item.appendChild(mk("span","donut-name",esc(p.name||"(이름 없음)")));
+        item.appendChild(mk("span","donut-pct",w.toFixed(1)+"%"));
+        leg.appendChild(item);
+      });
+      wrap.appendChild(leg); sec.appendChild(wrap);
+    }
+
+    host.appendChild(sec);
   }
 }
 
