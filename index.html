@@ -115,6 +115,10 @@
   .cmt-body{ font-size:14px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word; line-height:1.55; }
 
   .ledger-hdr{ display:flex; align-items:center; gap:10px; margin-bottom:13px; }
+  .user-tabs-wrap{ display:flex; gap:6px; margin:14px 0 0; flex-wrap:wrap; }
+  .user-tab{ font-family:var(--font-mono); font-size:12.5px; font-weight:600; padding:7px 14px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink-2); cursor:pointer; transition:background .15s, color .15s, border-color .15s; }
+  .user-tab:hover{ background:#F0F2EE; border-color:#D5DAD0; }
+  .user-tab.active{ background:var(--brand); border-color:var(--brand); color:#fff; }
   .donut-wrap{ display:flex; align-items:center; gap:28px; margin-top:20px; flex-wrap:wrap; justify-content:center; }
   .donut-legend{ display:flex; flex-direction:column; gap:7px; }
   .donut-leg-item{ display:flex; align-items:center; gap:9px; font-size:13.5px; }
@@ -162,6 +166,7 @@
 </head><body><div class="wrap">
   <div class="mast">
     <div class="eyebrow">Thesis Board</div>
+    <div id="user-tabs-host"></div>
     <div class="title-row">
       <div>
         <h1 id="pf-title">진욱의 포트폴리오</h1>
@@ -192,6 +197,7 @@
 /* ════════════════════════════════════════════════════════
    ▼ 1) 배포한 GAS 웹앱 주소(…/exec)  (thesis-board.gs 설정 6번) */
 const API_URL = "https://script.google.com/macros/s/AKfycbwKvHfqxIggH08RuxpCRAsJ29lnSA9BnPVGl86Bl3hJcqhDWDDek6UdSEwdoeMeXfus/exec";
+const DEFAULT_USER = "jinwook";
 /* ▼ 2) Cusdis 앱 ID  (cusdis.com 가입 → New Website → data-app-id 값)
         비워두면 댓글 영역에 "설정 필요" 안내만 떠요. */
 const CUSDIS_APP_ID = "5d7f96f3-255c-4c55-98fd-cddd08589e02";
@@ -201,7 +207,8 @@ const CUSDIS_APP_ID = "5d7f96f3-255c-4c55-98fd-cddd08589e02";
 const STATUSES = [["valid","유효"],["watch","주의"],["broken","위험"]];
 const STATUS_KO = Object.fromEntries(STATUSES);
 
-let board = { title:"진욱의 포트폴리오", overall:"", updatedAt:null, positions:[] };
+let users = [], currentUser = DEFAULT_USER;
+let board = { title:"포트폴리오", overall:"", updatedAt:null, positions:[] };
 let stateName = "loading";   // loading | ok | error | setup
 let editing = false, askingPw = false, pwError = false, pwBusy = false, saving = false;
 let sessionPassword = null;  // 검증된 비번을 세션 동안만 메모리 보관(새로고침 시 사라짐)
@@ -223,7 +230,7 @@ async function fetchPrices(){
     if (res && res.ok){
       prices = res.prices || {};
       pricesAt = new Date();
-      localStorage.setItem('prices_cache', JSON.stringify({ prices, pricesAt }));
+      localStorage.setItem('prices_cache_'+currentUser, JSON.stringify({ prices, pricesAt }));
       const found = Object.keys(prices).length;
       toast(found+'/'+tickerKeys.length+'개 현재가 조회 완료');
     } else {
@@ -240,15 +247,51 @@ async function apiPost(payload){
   return await r.json();
 }
 
+async function loadUsers(){
+  try{
+    const r = await fetch(API_URL + '?action=users');
+    const res = await r.json();
+    if(res && res.users && res.users.length) users = res.users;
+  }catch(e){}
+}
+
 async function load(){
   if (!API_URL || API_URL.indexOf("http") !== 0){ stateName="setup"; renderAll(); return; }
   stateName="loading"; renderAll();
   try{
-    const data = await apiGet();
+    const r = await fetch(API_URL + '?user=' + encodeURIComponent(currentUser));
+    const data = await r.json();
     if (!data || !Array.isArray(data.positions)) throw new Error("bad payload");
     board = data; stateName="ok";
   }catch(e){ stateName="error"; }
   renderAll();
+}
+
+function renderUserTabs(){
+  const host = document.getElementById("user-tabs-host"); if(!host) return;
+  host.innerHTML = "";
+  if(users.length <= 1) return;
+  const wrap = mk("div","user-tabs-wrap");
+  users.forEach(u=>{
+    const tab = mk("button","user-tab"+(currentUser===u.id?" active":""), u.name||u.id);
+    tab.onclick=()=>switchUser(u.id);
+    wrap.appendChild(tab);
+  });
+  host.appendChild(wrap);
+}
+
+function switchUser(id){
+  if(id === currentUser) return;
+  currentUser = id;
+  editing=false; sessionPassword=null; askingPw=false; pwError=false;
+  comments=[]; commentsLoaded=false; historyOpen=false; historyItems=null;
+  try{
+    const c = JSON.parse(localStorage.getItem('prices_cache_'+currentUser)||'null');
+    if(c && c.prices){ prices=c.prices; pricesAt=new Date(c.pricesAt); } else { prices={}; pricesAt=null; }
+    const cp = JSON.parse(localStorage.getItem('private_positions_'+currentUser)||'null');
+    privatePositions = cp || {};
+  }catch(e){ prices={}; pricesAt=null; privatePositions={}; }
+  load();
 }
 
 function scheduleAutoSave(){
@@ -260,7 +303,7 @@ async function save(isAuto=false){
   if (saving) return;
   saving = true; renderSavebar();
   try{
-    const res = await apiPost({ action:"save", password:sessionPassword, board:board });
+    const res = await apiPost({ action:"save", user:currentUser, password:sessionPassword, board:board });
     if (res && res.ok){
       toast(isAuto ? "자동저장 완료" : "저장됨");
       saving=false;
@@ -274,7 +317,7 @@ async function save(isAuto=false){
 }
 
 /* ── 렌더 ── */
-function renderAll(){ renderMeta(); renderActions(); renderOverall(); renderList(); renderLedger(); renderComments(); renderSavebar(); renderModal(); }
+function renderAll(){ renderUserTabs(); renderMeta(); renderActions(); renderOverall(); renderList(); renderLedger(); renderComments(); renderSavebar(); renderModal(); }
 
 function renderMeta(){
   document.getElementById("pf-title").textContent = board.title || "포트폴리오";
@@ -311,13 +354,13 @@ async function tryUnlock(v){
   if (pwBusy) return;
   pwBusy=true; pwError=false; renderActions();
   try{
-    const res = await apiPost({ action:"auth", password:v });
+    const res = await apiPost({ action:"auth", user:currentUser, password:v });
     if (res && res.ok && res.board){
       sessionPassword=v; board=res.board; editing=true; askingPw=false; pwError=false;
       const priv={};
       board.positions.forEach(p=>{ priv[p.ticker]={avgPrice:p.avgPrice,shares:p.shares}; });
       privatePositions=priv;
-      localStorage.setItem('private_positions', JSON.stringify(priv));
+      localStorage.setItem('private_positions_'+currentUser, JSON.stringify(priv));
     }
     else pwError=true;
   }catch(e){ pwError=true; toast("확인 실패 — 네트워크/주소를 확인하세요"); }
@@ -530,7 +573,7 @@ function renderLedger(){
 
 async function loadComments(){
   try{
-    const r = await fetch(API_URL + '?action=comments');
+    const r = await fetch(API_URL + '?action=comments&user=' + encodeURIComponent(currentUser));
     const res = await r.json();
     if(res && res.ok){ comments = res.comments || []; }
   }catch(e){}
@@ -546,7 +589,7 @@ async function submitComment(){
   commentBusy = true;
   const btn = document.getElementById('cmt-submit'); if(btn) btn.disabled=true;
   try{
-    const r = await fetch(API_URL+'?action=addcomment&nickname='+encodeURIComponent(nick)+'&content='+encodeURIComponent(body));
+    const r = await fetch(API_URL+'?action=addcomment&user='+encodeURIComponent(currentUser)+'&nickname='+encodeURIComponent(nick)+'&content='+encodeURIComponent(body));
     const res = await r.json();
     if(res && res.ok){ toast('댓글이 등록됐어요'); document.getElementById('cmt-body').value=''; commentsLoaded=false; await loadComments(); }
     else toast('등록 실패');
@@ -602,7 +645,7 @@ function renderSavebar(){
 async function openHistory(){
   historyOpen=true; historyLoading=true; historyItems=null; renderModal();
   try{
-    const res = await apiPost({ action:"history", password:sessionPassword });
+    const res = await apiPost({ action:"history", user:currentUser, password:sessionPassword });
     historyItems = (res && res.ok && res.items) ? res.items : [];
   }catch(e){ historyItems=[]; toast("기록을 불러오지 못했어요"); }
   historyLoading=false; renderModal();
@@ -649,12 +692,12 @@ let toastT;
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2300); }
 
 try {
-  const cached = JSON.parse(localStorage.getItem('prices_cache') || 'null');
+  const cached = JSON.parse(localStorage.getItem('prices_cache_'+currentUser) || 'null');
   if (cached && cached.prices) { prices = cached.prices; pricesAt = new Date(cached.pricesAt); }
-  const cachedPriv = JSON.parse(localStorage.getItem('private_positions') || 'null');
+  const cachedPriv = JSON.parse(localStorage.getItem('private_positions_'+currentUser) || 'null');
   if (cachedPriv) privatePositions = cachedPriv;
 } catch(e) {}
-load();
+loadUsers().then(()=>{ renderUserTabs(); load(); });
 document.getElementById('site-updated').textContent = fmt(new Date(document.lastModified));
 </script>
 </body></html>
