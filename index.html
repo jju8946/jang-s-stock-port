@@ -103,6 +103,17 @@
   .wval{ position:relative; z-index:1; }
   .ledger-cap{ font-family:var(--font-mono); font-size:11px; color:var(--ink-3); margin-top:11px; text-align:center; }
 
+  .comment-form{ display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+  .form-row{ display:flex; gap:8px; align-items:center; }
+  .form-row input{ width:140px; flex:none; }
+  .cmt-list{ background:var(--card); border:1px solid var(--line); border-radius:13px; overflow:hidden; }
+  .cmt{ padding:13px 17px; border-bottom:1px solid var(--line-2); }
+  .cmt:last-child{ border-bottom:none; }
+  .cmt-head{ display:flex; align-items:baseline; gap:9px; margin-bottom:5px; }
+  .cmt-nick{ font-weight:600; font-size:14px; }
+  .cmt-time{ font-family:var(--font-mono); font-size:11px; color:var(--ink-3); }
+  .cmt-body{ font-size:14px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word; line-height:1.55; }
+
   .ledger-hdr{ display:flex; align-items:center; gap:10px; margin-bottom:13px; }
   .ledger-hdr-text{ font-family:var(--font-mono); font-size:11px; letter-spacing:.03em; color:var(--ink-2); white-space:nowrap; }
   .ledger-hdr-line{ flex:1; height:1px; background:var(--line); }
@@ -189,7 +200,7 @@ let stateName = "loading";   // loading | ok | error | setup
 let editing = false, askingPw = false, pwError = false, pwBusy = false, saving = false;
 let sessionPassword = null;  // 검증된 비번을 세션 동안만 메모리 보관(새로고침 시 사라짐)
 let historyOpen = false, historyItems = null, historyLoading = false;
-let cusdisLoaded = false;
+let comments = [], commentsLoaded = false, commentBusy = false;
 let prices = {}, pricesAt = null, showReturns = false, pricesBusy = false;
 let autoSaveTimer = null;
 let privatePositions = {}; // ticker → {avgPrice, shares} — localStorage 캐시
@@ -468,25 +479,64 @@ function renderLedger(){
   }
 }
 
+async function loadComments(){
+  try{
+    const r = await fetch(API_URL + '?action=comments');
+    const res = await r.json();
+    if(res && res.ok){ comments = res.comments || []; }
+  }catch(e){}
+  commentsLoaded = true;
+  renderComments();
+}
+
+async function submitComment(){
+  const nick = document.getElementById('cmt-nick').value.trim();
+  const body = document.getElementById('cmt-body').value.trim();
+  if(!nick || !body){ toast('닉네임과 내용을 입력해주세요'); return; }
+  if(commentBusy) return;
+  commentBusy = true;
+  const btn = document.getElementById('cmt-submit'); if(btn) btn.disabled=true;
+  try{
+    const r = await fetch(API_URL+'?action=addcomment&nickname='+encodeURIComponent(nick)+'&content='+encodeURIComponent(body));
+    const res = await r.json();
+    if(res && res.ok){ toast('댓글이 등록됐어요'); document.getElementById('cmt-body').value=''; commentsLoaded=false; await loadComments(); }
+    else toast('등록 실패');
+  }catch(e){ toast('등록 실패'); }
+  commentBusy = false;
+}
+
 function renderComments(){
   const host = document.getElementById("comments");
   const show = (!editing && stateName==="ok");
   host.style.display = show ? "block" : "none";
-  if (!show) return;
+  if(!show) return;
 
-  if (!CUSDIS_APP_ID || CUSDIS_APP_ID.indexOf("PASTE")===0){
-    host.innerHTML = '<div class="clab">댓글</div>';
-    host.appendChild(noticeEl("댓글 설정 필요","Cusdis(cusdis.com) 가입 후 New Website에서 받은 앱 ID를 코드 상단 CUSDIS_APP_ID에 넣으세요."));
-    return;
+  if(!commentsLoaded){ host.innerHTML='<div class="clab">댓글</div>'; loadComments(); return; }
+
+  host.innerHTML = '';
+  host.appendChild(mk("div","clab","댓글 · "+comments.length+"개"));
+
+  const form = mk("div","comment-form");
+  const row = mk("div","form-row");
+  const nickInp = document.createElement("input"); nickInp.className="f"; nickInp.id="cmt-nick"; nickInp.placeholder="닉네임"; nickInp.maxLength=20;
+  const submitBtn = mk("button","btn primary","등록"); submitBtn.id="cmt-submit"; submitBtn.onclick=()=>submitComment();
+  row.appendChild(nickInp); row.appendChild(submitBtn);
+  const bodyTa = document.createElement("textarea"); bodyTa.className="f"; bodyTa.id="cmt-body"; bodyTa.rows=2; bodyTa.placeholder="댓글을 입력하세요"; bodyTa.maxLength=300;
+  form.appendChild(row); form.appendChild(bodyTa); host.appendChild(form);
+
+  if(comments.length===0){
+    host.appendChild(mk("div","ledger-cap","아직 댓글이 없어요. 첫 댓글을 남겨보세요!"));
+  } else {
+    const list = mk("div","cmt-list");
+    comments.forEach(c=>{
+      const item=mk("div","cmt");
+      const h=mk("div","cmt-head");
+      h.appendChild(mk("span","cmt-nick",c.nickname)); h.appendChild(mk("span","cmt-time",fmt(c.ts)));
+      item.appendChild(h); item.appendChild(mk("div","cmt-body",c.content));
+      list.appendChild(item);
+    });
+    host.appendChild(list);
   }
-  if (cusdisLoaded){ if (window.CUSDIS) window.CUSDIS.initial(); return; }
-
-  host.innerHTML =
-    '<div class="clab">댓글</div>'+
-    '<div id="cusdis_thread" data-host="https://cusdis.com" data-app-id="'+CUSDIS_APP_ID+'"'+
-    ' data-page-id="thesis-board" data-page-url="'+location.href+'" data-page-title="'+document.title+'"></div>';
-  const s=document.createElement("script"); s.async=true; s.defer=true; s.src="https://cusdis.com/js/cusdis.es.js";
-  document.body.appendChild(s); cusdisLoaded=true;
 }
 
 function renderSavebar(){
