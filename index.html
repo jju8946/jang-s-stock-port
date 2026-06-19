@@ -205,6 +205,7 @@ async function fetchPrices(){
     if (res && res.ok){
       prices = res.prices || {};
       pricesAt = new Date();
+      localStorage.setItem('prices_cache', JSON.stringify({ prices, pricesAt }));
       const found = Object.keys(prices).length;
       toast(found+'/'+tickerKeys.length+'개 현재가 조회 완료');
     } else {
@@ -540,6 +541,10 @@ function fmt(ts){ const d=new Date(ts), p=n=>String(n).padStart(2,"0"); return `
 let toastT;
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2300); }
 
+try {
+  const cached = JSON.parse(localStorage.getItem('prices_cache') || 'null');
+  if (cached && cached.prices) { prices = cached.prices; pricesAt = new Date(cached.pricesAt); }
+} catch(e) {}
 load();
 document.getElementById('site-updated').textContent = fmt(new Date(document.lastModified));
 </script>
