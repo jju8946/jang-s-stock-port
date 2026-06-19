@@ -165,7 +165,7 @@
   <div id="ledger-host"></div>
   <div id="savebar-host"></div>
   <section id="comments" style="display: none;"></section>
-  <div class="foot" id="foot">data: Google Sheet (Apps Script) · 공개 화면은 비중만 표시됩니다</div>
+  <div class="foot" id="foot">data: Google Sheet (Apps Script) · 공개 화면은 비중만 표시됩니다 · 사이트 업데이트 <span id="site-updated"></span></div>
 </div>
 
 <div id="modal-host"></div>
@@ -536,5 +536,6 @@ let toastT;
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2300); }
 
 load();
+document.getElementById('site-updated').textContent = fmt(new Date(document.lastModified));
 </script>
 </body></html>
