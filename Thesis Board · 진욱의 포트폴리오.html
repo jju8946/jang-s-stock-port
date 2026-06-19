@@ -1,0 +1,455 @@
+
+<!-- saved from url=(0051)file:///C:/Users/Jang/Downloads/thesis-board_2.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thesis Board · 진욱의 포트폴리오</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+  @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+  :root{
+    --paper:#F4F6F2; --card:#FFFFFF; --ink:#171A19; --ink-2:#5E655F; --ink-3:#959B94;
+    --line:#E3E6DF; --line-2:#EDEFEA; --brand:#0F4C5C; --brand-ink:#0B3A47;
+    --valid:#2E7D54; --valid-bg:#E8F2EC; --watch:#B5851A; --watch-bg:#F7EFDA; --broken:#B23A2E; --broken-bg:#F7E7E3;
+    --font-display:'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-mono:'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+    --font-kr:'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ background:var(--paper); }
+  body{ font-family:var(--font-kr); color:var(--ink); line-height:1.5; -webkit-font-smoothing:antialiased; padding:28px 20px 80px; }
+  .wrap{ max-width:760px; margin:0 auto; }
+
+  .mast{ opacity:0; transform:translateY(8px); animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards; }
+  .eyebrow{ font-family:var(--font-display); font-weight:700; font-size:12px; letter-spacing:.22em; text-transform:uppercase; color:var(--brand); display:flex; align-items:center; gap:9px; }
+  .eyebrow::after{ content:""; flex:1; height:1px; background:var(--line); }
+  .title-row{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-top:14px; flex-wrap:wrap; }
+  h1{ font-weight:800; font-size:31px; letter-spacing:-.02em; line-height:1.1; }
+  .meta{ font-family:var(--font-mono); font-size:12px; color:var(--ink-3); margin-top:7px; }
+  .actions{ display:flex; align-items:center; gap:8px; }
+
+  .legend{ display:flex; gap:16px; margin-top:18px; padding:11px 0 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .lg{ display:flex; align-items:center; gap:7px; font-family:var(--font-mono); font-size:12px; color:var(--ink-2); }
+  .dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .dot.valid{ background:var(--valid);} .dot.watch{ background:var(--watch);} .dot.broken{ background:var(--broken);}
+
+  .overall{ margin-top:18px; padding:15px 17px; background:var(--card); border:1px solid var(--line); border-radius:11px; font-size:14.5px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word; }
+  .overall .lab{ font-family:var(--font-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); display:block; margin-bottom:6px; }
+  .overall textarea{ width:100%; }
+  .notice{ margin-top:18px; padding:15px 17px; background:var(--card); border:1px solid var(--line); border-left:4px solid var(--brand); border-radius:11px; }
+  .notice b{ display:block; font-size:14.5px; color:var(--ink); margin-bottom:5px; }
+  .notice span{ font-size:13.5px; color:var(--ink-2); }
+
+  .list{ margin-top:20px; display:flex; flex-direction:column; gap:13px; }
+  .card{ position:relative; background:var(--card); border:1px solid var(--line); border-radius:13px; padding:17px 19px 17px 22px; overflow:hidden; opacity:0; transform:translateY(8px); animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards; transition:border-color .18s ease, box-shadow .18s ease; }
+  .card:hover{ border-color:#D5DAD0; box-shadow:0 1px 0 rgba(23,26,25,.02), 0 8px 24px -18px rgba(23,26,25,.35); }
+  .spine{ position:absolute; left:0; top:0; bottom:0; width:4px; }
+  .spine.valid{ background:var(--valid);} .spine.watch{ background:var(--watch);} .spine.broken{ background:var(--broken);}
+  .card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .ident{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .name{ font-size:17px; font-weight:700; letter-spacing:-.01em; }
+  .ticker{ font-family:var(--font-mono); font-size:12.5px; color:var(--ink-3); font-weight:500; }
+  .chip{ font-family:var(--font-mono); font-size:11.5px; font-weight:600; padding:3.5px 9px; border-radius:999px; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; flex:none; }
+  .chip.valid{ color:var(--valid); background:var(--valid-bg);} .chip.watch{ color:var(--watch); background:var(--watch-bg);} .chip.broken{ color:var(--broken); background:var(--broken-bg);}
+  .idea{ margin-top:11px; font-size:15.5px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+  .idea.empty{ color:var(--ink-3); font-style:italic; }
+  .note{ margin-top:10px; font-size:13.5px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word; padding-top:10px; border-top:1px dashed var(--line); }
+
+  button{ font-family:var(--font-kr); cursor:pointer; border:none; background:none; color:inherit; }
+  .btn{ font-size:13.5px; font-weight:600; padding:8px 15px; border-radius:9px; border:1px solid var(--line); background:var(--card); color:var(--ink); transition:background .15s ease, border-color .15s ease, transform .05s ease; }
+  .btn:hover{ background:#FBFCFA; border-color:#D5DAD0; }
+  .btn:active{ transform:translateY(1px); }
+  .btn[disabled]{ opacity:.5; cursor:default; }
+  .btn.primary{ background:var(--brand); border-color:var(--brand); color:#fff; }
+  .btn.primary:hover{ background:var(--brand-ink); border-color:var(--brand-ink); }
+  .btn.danger{ color:var(--broken); border-color:transparent; }
+  .btn.danger:hover{ background:var(--broken-bg); }
+  .btn.sm{ font-size:12.5px; padding:6px 11px; }
+  :focus-visible{ outline:2px solid var(--brand); outline-offset:2px; border-radius:6px; }
+
+  input.f, textarea.f{ font-family:var(--font-kr); font-size:14.5px; color:var(--ink); width:100%; padding:9px 11px; background:#FCFDFB; border:1px solid var(--line); border-radius:8px; resize:vertical; }
+  input.f:focus, textarea.f:focus{ outline:none; border-color:var(--brand); background:#fff; }
+  input.f.mono{ font-family:var(--font-mono); font-size:13px; }
+  .field-lab{ font-family:var(--font-mono); font-size:10.5px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3); display:block; margin:11px 0 5px; }
+  .grid2{ display:grid; grid-template-columns:1.3fr .7fr; gap:11px; }
+  .seg{ display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button{ font-family:var(--font-mono); font-size:12px; font-weight:600; padding:8px 13px; color:var(--ink-3); background:#FCFDFB; border-right:1px solid var(--line); }
+  .seg button:last-child{ border-right:none; }
+  .seg button.on.valid{ color:#fff; background:var(--valid); } .seg button.on.watch{ color:#fff; background:var(--watch); } .seg button.on.broken{ color:#fff; background:var(--broken); }
+  .card-edit-foot{ display:flex; justify-content:flex-end; margin-top:13px; }
+
+  .pw{ display:flex; align-items:center; gap:8px; }
+  .pw input{ font-family:var(--font-mono); font-size:13px; width:130px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .pw input:focus{ outline:none; border-color:var(--brand); }
+  .pw .err{ color:var(--broken); font-size:12px; font-family:var(--font-mono); }
+
+  .empty-state{ text-align:center; padding:46px 20px; color:var(--ink-3); border:1px dashed var(--line); border-radius:13px; margin-top:20px; }
+  .empty-state b{ color:var(--ink-2); font-weight:600; }
+
+  .ledger{ margin-top:32px; opacity:0; transform:translateY(8px); animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards; animation-delay:.1s; }
+  .section-lab{ font-family:var(--font-mono); font-size:11px; letter-spacing:.03em; color:var(--ink-2); display:flex; align-items:center; gap:11px; margin-bottom:13px; }
+  .section-lab::after{ content:""; flex:1; height:1px; background:var(--line); }
+  table.ledger-t{ width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:13px; overflow:hidden; }
+  .ledger-t th, .ledger-t td{ padding:11px 14px; text-align:right; font-size:13.5px; }
+  .ledger-t th:first-child, .ledger-t td:first-child{ text-align:left; }
+  .ledger-t th{ font-family:var(--font-mono); font-weight:500; font-size:10.5px; letter-spacing:.04em; color:var(--ink-3); text-transform:uppercase; background:#FBFCFA; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .ledger-t td{ border-bottom:1px solid var(--line-2); }
+  .ledger-t tbody tr:last-child td{ border-bottom:1px solid var(--line); }
+  .ledger-t .num{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--ink); white-space:nowrap; }
+  .ledger-t .nm{ font-weight:600; }
+  .ledger-t tfoot td{ font-weight:700; background:#FBFCFA; border-bottom:none; }
+  .wcell{ position:relative; display:inline-block; min-width:56px; text-align:right; padding:2px 0; }
+  .wbar{ position:absolute; right:0; top:50%; transform:translateY(-50%); height:20px; max-width:100%; background:rgba(15,76,92,.11); border-radius:5px; z-index:0; }
+  .wval{ position:relative; z-index:1; }
+  .ledger-cap{ font-family:var(--font-mono); font-size:11px; color:var(--ink-3); margin-top:11px; text-align:center; }
+
+  #comments{ margin-top:38px; }
+  #comments .clab{ font-family:var(--font-mono); font-size:11px; letter-spacing:.03em; color:var(--ink-2); display:flex; align-items:center; gap:11px; margin-bottom:16px; }
+  #comments .clab::after{ content:""; flex:1; height:1px; background:var(--line); }
+
+  .savebar{ position:sticky; bottom:0; margin-top:22px; padding:14px 0 6px; display:flex; justify-content:space-between; align-items:center; gap:12px; background:linear-gradient(to top, var(--paper) 70%, rgba(244,246,242,0)); }
+  .savebar .hint{ font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3); }
+  .savebar .right{ display:flex; gap:9px; }
+  .foot{ margin-top:26px; font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3); }
+
+  .modal-bg{ position:fixed; inset:0; background:rgba(23,26,25,.42); display:flex; align-items:center; justify-content:center; padding:20px; z-index:60; }
+  .modal{ background:var(--card); border:1px solid var(--line); border-radius:14px; width:100%; max-width:440px; max-height:80vh; overflow:auto; padding:20px; }
+  .modal h3{ font-size:16px; font-weight:700; margin-bottom:4px; }
+  .modal .sub{ font-family:var(--font-mono); font-size:11px; color:var(--ink-3); margin-bottom:14px; line-height:1.6; }
+  .hrow{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--line-2); }
+  .hrow:last-child{ border-bottom:none; }
+  .hrow .when{ font-family:var(--font-mono); font-size:12.5px; color:var(--ink); }
+  .hrow .cnt{ font-family:var(--font-mono); font-size:11px; color:var(--ink-3); margin-top:2px; }
+  .modal-foot{ display:flex; justify-content:flex-end; margin-top:14px; }
+
+  .toast{ position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff; font-size:13px; padding:10px 17px; border-radius:10px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; font-weight:500; z-index:70; max-width:90vw; }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (max-width:520px){
+    body{ padding:22px 14px 70px; } h1{ font-size:26px; } .grid2{ grid-template-columns:1fr; } .title-row{ align-items:flex-start; }
+    .ledger-t th, .ledger-t td{ padding:10px 9px; font-size:12.5px; }
+  }
+  @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } .mast,.card,.ledger{ opacity:1; transform:none; } }
+  @keyframes rise{ to{ opacity:1; transform:translateY(0);} }
+</style>
+
+</head><body><div class="wrap">
+  <div class="mast">
+    <div class="eyebrow">Thesis Board</div>
+    <div class="title-row">
+      <div>
+        <h1 id="pf-title">진욱의 포트폴리오</h1>
+        <div class="meta" id="pf-meta">설정 필요 · 코드 상단 API_URL을 채우세요</div>
+      </div>
+      <div class="actions" id="actions"></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span class="lg"><span class="dot valid"></span>유효 — 논거 유지</span>
+    <span class="lg"><span class="dot watch"></span>주의 — 흔들림</span>
+    <span class="lg"><span class="dot broken"></span>위험 — 깨짐</span>
+  </div>
+
+  <div id="overall-host"><div class="notice"><b>설정이 필요해요</b><span>함께 받은 Apps Script(thesis-board.gs)를 배포하면 …/exec 주소가 나와요. 그 주소를 이 코드 상단 API_URL에 넣으면 연결됩니다.</span></div></div>
+  <div id="list" class="list"></div>
+  <div id="ledger-host"></div>
+  <div id="savebar-host"></div>
+  <section id="comments" style="display: none;"></section>
+  <div class="foot" id="foot">data: Google Sheet (Apps Script) · 공개 화면은 비중만 표시됩니다</div>
+</div>
+
+<div id="modal-host"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════
+   ▼ 1) 배포한 GAS 웹앱 주소(…/exec)  (thesis-board.gs 설정 6번) */
+const API_URL = "https://script.google.com/macros/s/AKfycbwKvHfqxIggH08RuxpCRAsJ29lnSA9BnPVGl86Bl3hJcqhDWDDek6UdSEwdoeMeXfus/exec";
+/* ▼ 2) Cusdis 앱 ID  (cusdis.com 가입 → New Website → data-app-id 값)
+        비워두면 댓글 영역에 "설정 필요" 안내만 떠요. */
+const CUSDIS_APP_ID = "5d7f96f3-255c-4c55-98fd-cddd08589e02";
+/* 비밀번호는 여기 없음 — Apps Script [스크립트 속성]의 EDIT_PASSWORD 에 보관 */
+/* ════════════════════════════════════════════════════════ */
+
+const STATUSES = [["valid","유효"],["watch","주의"],["broken","위험"]];
+const STATUS_KO = Object.fromEntries(STATUSES);
+
+let board = { title:"진욱의 포트폴리오", overall:"", updatedAt:null, positions:[] };
+let stateName = "loading";   // loading | ok | error | setup
+let editing = false, askingPw = false, pwError = false, pwBusy = false, saving = false;
+let sessionPassword = null;  // 검증된 비번을 세션 동안만 메모리 보관(새로고침 시 사라짐)
+let historyOpen = false, historyItems = null, historyLoading = false;
+let cusdisLoaded = false;
+
+/* ── API ── */
+async function apiGet(){ const r = await fetch(API_URL, { method:"GET" }); return await r.json(); }
+async function apiPost(payload){
+  const r = await fetch(API_URL, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
+  return await r.json();
+}
+
+async function load(){
+  if (!API_URL || API_URL.indexOf("http") !== 0){ stateName="setup"; renderAll(); return; }
+  stateName="loading"; renderAll();
+  try{
+    const data = await apiGet();
+    if (!data || !Array.isArray(data.positions)) throw new Error("bad payload");
+    board = data; stateName="ok";
+  }catch(e){ stateName="error"; }
+  renderAll();
+}
+
+async function save(){
+  if (saving) return;
+  saving = true; renderSavebar();
+  try{
+    const res = await apiPost({ action:"save", password:sessionPassword, board:board });
+    if (res && res.ok){ toast("저장됨"); editing=false; saving=false; await load(); return; }
+    if (res && res.error === "auth"){ toast("비밀번호가 만료됐어요 — 다시 수정을 눌러주세요"); editing=false; sessionPassword=null; saving=false; await load(); return; }
+    toast("저장 실패 — 다시 시도해 주세요");
+  }catch(e){ toast("저장 실패 — 네트워크/주소를 확인하세요"); }
+  saving=false; renderSavebar();
+}
+
+/* ── 렌더 ── */
+function renderAll(){ renderMeta(); renderActions(); renderOverall(); renderList(); renderLedger(); renderComments(); renderSavebar(); renderModal(); }
+
+function renderMeta(){
+  document.getElementById("pf-title").textContent = board.title || "포트폴리오";
+  const m = document.getElementById("pf-meta");
+  if (editing){ m.textContent = "수정 중 — 변경 후 저장을 누르세요"; return; }
+  if (stateName==="loading"){ m.textContent = "불러오는 중…"; return; }
+  if (stateName==="setup"){ m.textContent = "설정 필요 · 코드 상단 API_URL을 채우세요"; return; }
+  if (stateName==="error"){ m.textContent = "불러오지 못했어요 · API 주소/배포 확인"; return; }
+  m.textContent = board.updatedAt ? "마지막 업데이트 · " + fmt(board.updatedAt) : "읽기 전용";
+}
+
+function renderActions(){
+  const host = document.getElementById("actions"); host.innerHTML = "";
+  if (stateName !== "ok" && !editing) return;
+
+  if (editing){
+    const hist = mk("button","btn sm","기록"); hist.onclick=()=>openHistory();
+    host.appendChild(hist); return;
+  }
+  if (askingPw){
+    const box = mk("div","pw");
+    const inp = document.createElement("input"); inp.type="password"; inp.placeholder="비밀번호"; inp.disabled=pwBusy;
+    inp.onkeydown = (e)=>{ if(e.key==="Enter") tryUnlock(inp.value); if(e.key==="Escape"){ askingPw=false; pwError=false; renderAll(); } };
+    const go = mk("button","btn primary sm", pwBusy?"확인 중…":"확인"); go.disabled=pwBusy; go.onclick=()=>tryUnlock(inp.value);
+    box.appendChild(inp); box.appendChild(go);
+    if (pwError) box.appendChild(mk("span","err","불일치"));
+    host.appendChild(box); setTimeout(()=>inp.focus(),0); return;
+  }
+  const edit = mk("button","btn","수정"); edit.onclick=()=>{ askingPw=true; pwError=false; renderAll(); };
+  host.appendChild(edit);
+}
+
+async function tryUnlock(v){
+  if (pwBusy) return;
+  pwBusy=true; pwError=false; renderActions();
+  try{
+    const res = await apiPost({ action:"auth", password:v });
+    if (res && res.ok && res.board){ sessionPassword=v; board=res.board; editing=true; askingPw=false; pwError=false; }
+    else pwError=true;
+  }catch(e){ pwError=true; toast("확인 실패 — 네트워크/주소를 확인하세요"); }
+  pwBusy=false; renderAll();
+}
+
+function renderOverall(){
+  const host = document.getElementById("overall-host"); host.innerHTML = "";
+  if (stateName==="setup"){ host.appendChild(noticeEl("설정이 필요해요","함께 받은 Apps Script(thesis-board.gs)를 배포하면 …/exec 주소가 나와요. 그 주소를 이 코드 상단 API_URL에 넣으면 연결됩니다.")); return; }
+  if (stateName==="error"){ host.appendChild(noticeEl("데이터를 불러오지 못했어요","API_URL이 맞는지, Apps Script가 “모든 사용자” 액세스로 새 버전 배포됐는지 확인해 주세요.")); return; }
+
+  if (editing){
+    const box = mk("div","overall"); box.appendChild(mk("span","lab","전체 메모 (선택)"));
+    const ta = document.createElement("textarea"); ta.className="f"; ta.rows=2; ta.value=board.overall||"";
+    ta.placeholder="포트폴리오 전체에 대한 한 줄 — 비중 방향, 현금 비중, 이번 주 관전 포인트 등";
+    ta.oninput=()=>{ board.overall=ta.value; }; box.appendChild(ta); host.appendChild(box);
+  } else if (board.overall && board.overall.trim()){
+    const box = mk("div","overall"); box.appendChild(mk("span","lab","전체 메모"));
+    const p = document.createElement("div"); p.textContent=board.overall; box.appendChild(p); host.appendChild(box);
+  }
+}
+
+function renderList(){
+  const list = document.getElementById("list"); list.innerHTML = "";
+  if (stateName!=="ok") return;
+
+  if (!editing && board.positions.length === 0){
+    const e = mk("div","empty-state",""); e.innerHTML = "아직 종목이 없어요.<br><b>수정</b>을 눌러 첫 종목과 메인 아이디어를 추가하세요.";
+    list.appendChild(e); return;
+  }
+
+  board.positions.forEach((p, i) => {
+    const card = mk("div","card"); card.style.animationDelay = (i*55)+"ms";
+    card.appendChild(mk("div","spine "+p.status));
+
+    if (!editing){
+      const head = mk("div","card-head"); const ident = mk("div","ident");
+      ident.appendChild(mk("span","name", p.name || "(이름 없음)"));
+      if (p.ticker) ident.appendChild(mk("span","ticker", p.ticker));
+      const chip = mk("div","chip "+p.status, ""); chip.innerHTML = '<span class="dot '+p.status+'"></span>'+STATUS_KO[p.status];
+      head.appendChild(ident); head.appendChild(chip); card.appendChild(head);
+      card.appendChild(mk("div","idea"+(p.idea&&p.idea.trim()?"":" empty"), p.idea && p.idea.trim() ? p.idea : "메인 아이디어가 비어 있어요"));
+      if (p.note && p.note.trim()) card.appendChild(mk("div","note", p.note));
+    } else {
+      const grid = mk("div","grid2");
+      const c1 = document.createElement("div"); c1.appendChild(labEl("종목명")); c1.appendChild(inputEl(p.name,"예: 하나머티리얼즈", v=>p.name=v));
+      const c2 = document.createElement("div"); c2.appendChild(labEl("종목코드")); c2.appendChild(inputEl(p.ticker,"166090", v=>p.ticker=v, true));
+      grid.appendChild(c1); grid.appendChild(c2); card.appendChild(grid);
+
+      const gridB = mk("div","grid2");
+      const b1 = document.createElement("div"); b1.appendChild(labEl("평균매수단가 (원)")); b1.appendChild(numInputEl(p.avgPrice,"45200", v=>p.avgPrice=v));
+      const b2 = document.createElement("div"); b2.appendChild(labEl("주식수")); b2.appendChild(numInputEl(p.shares,"120", v=>p.shares=v));
+      gridB.appendChild(b1); gridB.appendChild(b2); card.appendChild(gridB);
+
+      card.appendChild(labEl("상태")); card.appendChild(segEl(p));
+      card.appendChild(labEl("메인 아이디어 (논거)"));
+      const ta = document.createElement("textarea"); ta.className="f"; ta.rows=3; ta.value=p.idea||"";
+      ta.placeholder="이 종목을 보유한 핵심 이유 + 무엇이 바뀌면 생각을 접을지"; ta.oninput=()=>{ p.idea=ta.value; }; card.appendChild(ta);
+      card.appendChild(labEl("메모 (선택)"));
+      const tn = document.createElement("textarea"); tn.className="f"; tn.rows=2; tn.value=p.note||"";
+      tn.placeholder="오늘 체크한 것 — 신규 공시, 실적, 주가 이탈 등"; tn.oninput=()=>{ p.note=tn.value; }; card.appendChild(tn);
+
+      const foot = mk("div","card-edit-foot"); const del = mk("button","btn danger sm","삭제");
+      del.onclick=()=>{ board.positions.splice(i,1); renderList(); renderLedger(); }; foot.appendChild(del); card.appendChild(foot);
+    }
+    list.appendChild(card);
+  });
+
+  if (editing){
+    const add = mk("button","btn","＋ 종목 추가"); add.style.alignSelf="flex-start"; add.style.marginTop="2px";
+    add.onclick=()=>{ board.positions.push({ name:"", ticker:"", status:"valid", avgPrice:0, shares:0, idea:"", note:"" }); renderList(); renderLedger(); };
+    list.appendChild(add);
+  }
+}
+
+function renderLedger(){
+  const host = document.getElementById("ledger-host"); host.innerHTML = "";
+  if (stateName!=="ok" || board.positions.length===0) return;
+
+  if (editing){
+    // 수정 모드 — 금액 표시
+    const total = board.positions.reduce((s,p)=> s + (p.avgPrice||0)*(p.shares||0), 0);
+    const sec = mk("section","ledger"); sec.appendChild(mk("div","section-lab","매수 현황 · 비중은 매수금액 기준"));
+    const t = document.createElement("table"); t.className="ledger-t";
+    t.innerHTML = "<thead><tr><th>종목</th><th>평균매수단가</th><th>주식수</th><th>매수금액</th><th>비중</th></tr></thead>";
+    const tb = document.createElement("tbody");
+    board.positions.forEach(p=>{
+      const amt=(p.avgPrice||0)*(p.shares||0); const w=total>0?amt/total*100:0;
+      const wcell = w>0 ? `<td class="num"><span class="wcell"><span class="wbar" style="width:${w.toFixed(0)}%"></span><span class="wval">${w.toFixed(1)}%</span></span></td>` : `<td class="num">—</td>`;
+      const tr=document.createElement("tr");
+      tr.innerHTML = `<td class="nm">${esc(p.name||"(이름 없음)")}</td><td class="num">${fmtN(p.avgPrice||0)}</td><td class="num">${fmtN(p.shares||0)}</td><td class="num">${fmtN(amt)}</td>`+wcell;
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    const tf=document.createElement("tfoot");
+    tf.innerHTML = `<tr><td>합계</td><td class="num">—</td><td class="num">—</td><td class="num">${fmtN(total)}</td><td class="num">${total>0?"100%":"—"}</td></tr>`;
+    t.appendChild(tf); sec.appendChild(t);
+    if (total===0) sec.appendChild(mk("div","ledger-cap","평균매수단가와 주식수를 입력하면 매수금액·비중이 계산돼요."));
+    host.appendChild(sec);
+  } else {
+    // 공개 모드 — 비중만
+    const tw = board.positions.reduce((s,p)=> s + (Number(p.weight)||0), 0);
+    if (tw<=0) return;
+    const sec = mk("section","ledger"); sec.appendChild(mk("div","section-lab","포트 구성 · 비중"));
+    const t = document.createElement("table"); t.className="ledger-t";
+    t.innerHTML = "<thead><tr><th>종목</th><th>비중</th></tr></thead>";
+    const tb = document.createElement("tbody");
+    board.positions.forEach(p=>{
+      const w=Number(p.weight)||0;
+      const wcell = w>0 ? `<td class="num"><span class="wcell"><span class="wbar" style="width:${w.toFixed(0)}%"></span><span class="wval">${w.toFixed(1)}%</span></span></td>` : `<td class="num">—</td>`;
+      const tr=document.createElement("tr"); tr.innerHTML = `<td class="nm">${esc(p.name||"(이름 없음)")}</td>`+wcell; tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    const tf=document.createElement("tfoot"); tf.innerHTML = `<tr><td>합계</td><td class="num">100%</td></tr>`; t.appendChild(tf);
+    sec.appendChild(t); host.appendChild(sec);
+  }
+}
+
+function renderComments(){
+  const host = document.getElementById("comments");
+  const show = (!editing && stateName==="ok");
+  host.style.display = show ? "block" : "none";
+  if (!show) return;
+
+  if (!CUSDIS_APP_ID || CUSDIS_APP_ID.indexOf("PASTE")===0){
+    host.innerHTML = '<div class="clab">댓글</div>';
+    host.appendChild(noticeEl("댓글 설정 필요","Cusdis(cusdis.com) 가입 후 New Website에서 받은 앱 ID를 코드 상단 CUSDIS_APP_ID에 넣으세요."));
+    return;
+  }
+  if (cusdisLoaded){ if (window.CUSDIS) window.CUSDIS.initial(); return; }
+
+  host.innerHTML =
+    '<div class="clab">댓글</div>'+
+    '<div id="cusdis_thread" data-host="https://cusdis.com" data-app-id="'+CUSDIS_APP_ID+'"'+
+    ' data-page-id="thesis-board" data-page-url="'+location.href+'" data-page-title="'+document.title+'"></div>';
+  const s=document.createElement("script"); s.async=true; s.defer=true; s.src="https://cusdis.com/js/cusdis.es.js";
+  document.body.appendChild(s); cusdisLoaded=true;
+}
+
+function renderSavebar(){
+  const host = document.getElementById("savebar-host"); host.innerHTML = "";
+  if (!editing) return;
+  const bar = mk("div","savebar"); bar.appendChild(mk("span","hint","저장해야 공개 화면에 반영돼요"));
+  const right = mk("div","right");
+  const cancel = mk("button","btn","취소"); cancel.disabled=saving; cancel.onclick=()=>{ editing=false; load(); };
+  const savebtn = mk("button","btn primary", saving?"저장 중…":"저장"); savebtn.disabled=saving; savebtn.onclick=()=>save();
+  right.appendChild(cancel); right.appendChild(savebtn); bar.appendChild(right); host.appendChild(bar);
+}
+
+/* ── 기록(백업) 모달 ── */
+async function openHistory(){
+  historyOpen=true; historyLoading=true; historyItems=null; renderModal();
+  try{
+    const res = await apiPost({ action:"history", password:sessionPassword });
+    historyItems = (res && res.ok && res.items) ? res.items : [];
+  }catch(e){ historyItems=[]; toast("기록을 불러오지 못했어요"); }
+  historyLoading=false; renderModal();
+}
+function renderModal(){
+  const host = document.getElementById("modal-host"); host.innerHTML = "";
+  if (!historyOpen) return;
+  const bg = mk("div","modal-bg"); bg.onclick=(e)=>{ if(e.target===bg){ historyOpen=false; renderModal(); } };
+  const m = mk("div","modal");
+  m.appendChild(mk("h3",null,"기록 · 백업"));
+  m.appendChild(mk("div","sub","저장할 때마다 직전 버전이 자동 백업돼요. 한 버전을 골라 불러오면 편집기에 적용되고, 저장하면 그 버전으로 되돌아갑니다."));
+  if (historyLoading) m.appendChild(mk("div","cnt","불러오는 중…"));
+  else if (!historyItems || historyItems.length===0) m.appendChild(mk("div","sub","아직 백업이 없어요. 한 번 저장하면 쌓이기 시작해요."));
+  else historyItems.forEach(it=>{
+    const row = mk("div","hrow"); const left = mk("div");
+    left.appendChild(mk("div","when", fmt(it.ts)));
+    left.appendChild(mk("div","cnt", (it.board && it.board.positions ? it.board.positions.length : 0)+"개 종목"));
+    const btn = mk("button","btn sm","이 버전 불러오기");
+    btn.onclick=()=>{ board = it.board; historyOpen=false; renderAll(); toast("편집기에 불러왔어요 — 저장해야 반영됩니다"); };
+    row.appendChild(left); row.appendChild(btn); m.appendChild(row);
+  });
+  const foot = mk("div","modal-foot"); const close = mk("button","btn","닫기"); close.onclick=()=>{ historyOpen=false; renderModal(); };
+  foot.appendChild(close); m.appendChild(foot); bg.appendChild(m); host.appendChild(bg);
+}
+
+/* ── 헬퍼 ── */
+function segEl(p){
+  const seg = mk("div","seg");
+  STATUSES.forEach(([k,ko])=>{ const b=document.createElement("button"); b.textContent=ko; if(p.status===k) b.className="on "+k; b.onclick=()=>{ p.status=k; renderList(); }; seg.appendChild(b); });
+  return seg;
+}
+function inputEl(val, ph, onin, mono){ const i=document.createElement("input"); i.className="f"+(mono?" mono":""); i.value=val||""; i.placeholder=ph; i.oninput=()=>onin(i.value); return i; }
+function numInputEl(val, ph, onin){
+  const i=document.createElement("input"); i.className="f mono"; i.type="text"; i.inputMode="numeric"; i.value=val>0?String(val):""; i.placeholder=ph;
+  i.oninput=()=>{ const clean=i.value.replace(/[^\d]/g,""); if(i.value!==clean) i.value=clean; const n=parseInt(clean,10); onin(isNaN(n)?0:n); }; return i;
+}
+function noticeEl(title, body){ const d=mk("div","notice"); d.appendChild(mk("b",null,title)); d.appendChild(mk("span",null,body)); return d; }
+function labEl(t){ const s=document.createElement("span"); s.className="field-lab"; s.textContent=t; return s; }
+function mk(tag, cls, txt){ const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e; }
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function fmtN(n){ return n>0 ? n.toLocaleString("ko-KR") : "—"; }
+function fmt(ts){ const d=new Date(ts), p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+let toastT;
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2300); }
+
+load();
+</script>
+</body></html>
