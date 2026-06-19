@@ -200,7 +200,8 @@ async function fetchPrices(){
   const tickers = [...new Set(board.positions.filter(p=>p.ticker).map(p=>p.ticker))];
   if (!tickers.length){ pricesBusy=false; renderLedger(); return; }
   try{
-    const res = await apiPost({ action:'prices', tickers });
+    const r = await fetch(API_URL + '?action=prices&tickers=' + encodeURIComponent(tickers.join(',')));
+    const res = await r.json();
     if (res && res.ok){
       prices = res.prices || {};
       pricesAt = new Date();
