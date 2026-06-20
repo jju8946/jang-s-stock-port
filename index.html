@@ -813,15 +813,21 @@ function renderModal(){
 
 /* ── 캘린더 ── */
 const SHIFT_INFO = {
-  'D': { bg:'#DBEAFE', color:'#1E40AF', time:'07:00 ~ 14:00' },
-  'A': { bg:'#FEF3C7', color:'#92400E', time:'14:00 ~ 20:00' },
-  'N': { bg:'#1E293B', color:'#E2E8F0', time:'전날 20:00 ~ 07:00' },
+  'D':  { bg:'#DBEAFE', color:'#1E40AF', time:'07:00 ~ 14:00' },
+  'A':  { bg:'#FEF3C7', color:'#92400E', time:'14:00 ~ 20:00' },
+  'N':  { bg:'#1E293B', color:'#E2E8F0', time:'전날 20:00 ~ 07:00' },
+  'DA': { bg:'#CFFAFE', color:'#0E7490', time:'07:00 ~ 20:00' },
+  'NA': { bg:'#312E81', color:'#FDE68A', time:'전날 20:00 ~ 07:00 / 14:00 ~ 20:00' },
+  'W':  { bg:'#EDE9FE', color:'#5B21B6', time:'' },
   '비번': { bg:'#EDE9FE', color:'#5B21B6', time:'' },
   '휴무': { bg:'#D1FAE5', color:'#065F46', time:'' },
   '휴가': { bg:'#D1FAE5', color:'#065F46', time:'' },
 };
 function getShiftInfo(s){
   const u = s.trim().toUpperCase();
+  if(u==='DA') return SHIFT_INFO['DA'];
+  if(u==='NA') return SHIFT_INFO['NA'];
+  if(u==='W'||u.startsWith('W(')) return SHIFT_INFO['W'];
   if(u==='D'||u.startsWith('D ')) return SHIFT_INFO['D'];
   if(u==='A'||u.startsWith('A ')) return SHIFT_INFO['A'];
   if(u==='N'||u.startsWith('N ')) return SHIFT_INFO['N'];
@@ -829,16 +835,19 @@ function getShiftInfo(s){
   return {bg:'#F3F4F6', color:'#374151', time:''};
 }
 function getCombinedTime(evs){
+  // Single event: look up time directly from SHIFT_INFO
+  if(evs.length===1) return getShiftInfo(evs[0].summary).time || null;
+  // Multiple separate events: compute combined range
   const HOURS={'D':[7*60,14*60],'A':[14*60,20*60]};
   const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
-  const hasN=evs.some(ev=>{const u=ev.summary.trim().toUpperCase();return u==='N'||u.startsWith('N ');});
-  const daEvs=evs.filter(ev=>{const u=ev.summary.trim().toUpperCase();return u==='D'||u.startsWith('D ')||u==='A'||u.startsWith('A ');});
+  const hasN=evs.some(ev=>{const u=ev.summary.trim().toUpperCase();return u==='N'||u==='NA';});
+  const daEvs=evs.filter(ev=>{const u=ev.summary.trim().toUpperCase();return u==='D'||u.startsWith('D ')||u==='A'||u.startsWith('A ')||u==='DA';});
   if(hasN&&daEvs.length===0) return '전날 20:00 ~ 07:00';
   let s=Infinity,e=-Infinity;
   daEvs.forEach(ev=>{
     const u=ev.summary.trim().toUpperCase();
-    const k=(u==='D'||u.startsWith('D '))?'D':(u==='A'||u.startsWith('A '))?'A':null;
-    if(k&&HOURS[k]){s=Math.min(s,HOURS[k][0]);e=Math.max(e,HOURS[k][1]);}
+    const pairs=u==='DA'?[[7*60,20*60]]:u==='D'||u.startsWith('D ')?[[7*60,14*60]]:[[14*60,20*60]];
+    pairs.forEach(([a,b])=>{s=Math.min(s,a);e=Math.max(e,b);});
   });
   if(s===Infinity)return null;
   return hm(s)+' ~ '+hm(e);
