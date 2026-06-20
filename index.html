@@ -878,6 +878,10 @@ function parseIcal(text){
       if(bk==='SUMMARY')       ev.summary=v.replace(/\\,/g,',').replace(/\\/g,'').trim();
       if(bk==='RRULE')         ev.rrule=v;
       if(bk==='RECURRENCE-ID') ev.recId=parseIcalDate(k,v);
+      if(bk==='EXDATE'){
+        if(!ev.exdates) ev.exdates=new Set();
+        v.split(',').forEach(d=>ev.exdates.add(d.trim().slice(0,8)));
+      }
     }
     if(ev.summary&&ev.start){
       if(ev.rrule) recurBases.push(ev);
@@ -906,8 +910,10 @@ function parseIcal(text){
     let curr=new Date(base.start.d);
     while(curr<=cutoff){
       if(curr>=past){
+        const ymd=`${curr.getFullYear()}${String(curr.getMonth()+1).padStart(2,'0')}${String(curr.getDate()).padStart(2,'0')}`;
         const key=curr.getFullYear()+'-'+(curr.getMonth()+1)+'-'+curr.getDate();
-        if(!takenKeys.has(key)){
+        const excluded=base.exdates&&base.exdates.has(ymd);
+        if(!excluded&&!takenKeys.has(key)){
           evs.push({summary:base.summary,
             start:{d:new Date(curr),allDay:base.start.allDay},
             end:{d:new Date(curr.getTime()+dur),allDay:base.start.allDay}});
