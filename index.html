@@ -114,6 +114,12 @@
   .cmt-time{ font-family:var(--font-mono); font-size:11px; color:var(--ink-3); }
   .cmt-body{ font-size:14px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word; line-height:1.55; }
 
+  .verdict-row{ display:flex; gap:6px; margin-top:12px; padding-top:10px; border-top:1px dashed var(--line); }
+  .verdict-btn{ font-family:var(--font-mono); font-size:12px; font-weight:600; padding:6px 0; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink-3); cursor:pointer; transition:background .15s, color .15s, border-color .15s; flex:1; text-align:center; }
+  .verdict-btn:hover:not(.active){ background:#F5F6F3; color:var(--ink); }
+  .verdict-btn.active.valid{ background:var(--valid-bg); border-color:var(--valid); color:var(--valid); }
+  .verdict-btn.active.watch{ background:var(--watch-bg); border-color:var(--watch); color:var(--watch); }
+  .verdict-btn.active.broken{ background:var(--broken-bg); border-color:var(--broken); color:var(--broken); }
   .ledger-hdr{ display:flex; align-items:center; gap:10px; margin-bottom:13px; }
   .user-tabs-wrap{ display:flex; gap:6px; margin:14px 0 0; flex-wrap:wrap; }
   .user-tab{ font-family:var(--font-mono); font-size:12.5px; font-weight:600; padding:7px 14px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink-2); cursor:pointer; transition:background .15s, color .15s, border-color .15s; }
@@ -217,6 +223,7 @@ let comments = [], commentsLoaded = false, commentBusy = false;
 let prices = {}, pricesAt = null, showReturns = false, pricesBusy = false;
 let autoSaveTimer = null;
 let privatePositions = {}; // ticker → {avgPrice, shares} — localStorage 캐시
+let verdictPending = null; // {i, status} — 비번 확인 후 적용할 상태 변경
 
 /* ── 현재가 조회 (Apps Script → 네이버 금융) ── */
 async function fetchPrices(){
@@ -316,6 +323,27 @@ async function save(isAuto=false){
   saving=false; renderSavebar();
 }
 
+async function quickSetStatus(i, status){
+  if(board.positions[i].status === status) return;
+  board.positions[i].status = status;
+  renderList();
+  if(!sessionPassword){
+    verdictPending = {i, status};
+    askingPw=true; pwError=false; renderActions();
+    return;
+  }
+  await quickSave();
+}
+
+async function quickSave(){
+  try{
+    const res = await apiPost({ action:"save", user:currentUser, password:sessionPassword, board:board });
+    if(res && res.ok){ toast("저장됨"); }
+    else if(res && res.error==="auth"){ toast("인증 만료 — 다시 클릭해주세요"); sessionPassword=null; }
+    else toast("저장 실패");
+  }catch(e){ toast("저장 실패"); }
+}
+
 /* ── 렌더 ── */
 function renderAll(){ renderUserTabs(); renderMeta(); renderActions(); renderOverall(); renderList(); renderLedger(); renderComments(); renderSavebar(); renderModal(); }
 
@@ -356,11 +384,18 @@ async function tryUnlock(v){
   try{
     const res = await apiPost({ action:"auth", user:currentUser, password:v });
     if (res && res.ok && res.board){
-      sessionPassword=v; board=res.board; editing=true; askingPw=false; pwError=false;
+      sessionPassword=v; board=res.board; askingPw=false; pwError=false;
       const priv={};
       board.positions.forEach(p=>{ priv[p.ticker]={avgPrice:p.avgPrice,shares:p.shares}; });
       privatePositions=priv;
       localStorage.setItem('private_positions_'+currentUser, JSON.stringify(priv));
+      if(verdictPending !== null){
+        board.positions[verdictPending.i].status = verdictPending.status;
+        verdictPending = null;
+        pwBusy=false; renderAll();
+        await quickSave(); return;
+      }
+      editing=true;
     }
     else pwError=true;
   }catch(e){ pwError=true; toast("확인 실패 — 네트워크/주소를 확인하세요"); }
@@ -404,6 +439,13 @@ function renderList(){
       head.appendChild(ident); head.appendChild(chip); card.appendChild(head);
       card.appendChild(mk("div","idea"+(p.idea&&p.idea.trim()?"":" empty"), p.idea && p.idea.trim() ? p.idea : "메인 아이디어가 비어 있어요"));
       if (p.note && p.note.trim()) card.appendChild(mk("div","note", p.note));
+      const vrow = mk("div","verdict-row");
+      [["valid","✓ 유지"],["watch","? 의심"],["broken","✗ 폐기"]].forEach(([st,label])=>{
+        const btn = mk("button","verdict-btn"+(p.status===st?" active "+st:""), label);
+        btn.onclick=()=>quickSetStatus(i, st);
+        vrow.appendChild(btn);
+      });
+      card.appendChild(vrow);
     } else {
       const grid = mk("div","grid2");
       const c1 = document.createElement("div"); c1.appendChild(labEl("종목명")); c1.appendChild(inputEl(p.name,"예: 하나머티리얼즈", v=>p.name=v));
