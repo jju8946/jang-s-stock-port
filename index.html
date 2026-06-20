@@ -113,6 +113,15 @@
   .cmt-nick{ font-weight:600; font-size:14px; }
   .cmt-time{ font-family:var(--font-mono); font-size:11px; color:var(--ink-3); }
   .cmt-body{ font-size:14px; color:var(--ink-2); white-space:pre-wrap; word-break:break-word; line-height:1.55; }
+  .cmt-reply-btn{ font-size:11px; color:var(--ink-3); background:none; border:none; cursor:pointer; padding:2px 5px; margin-left:auto; border-radius:4px; }
+  .cmt-reply-btn:hover{ color:var(--ink-1); background:var(--line-2); }
+  .cmt-reply-btn.active{ color:var(--valid); }
+  .cmt-replies{ margin:8px 0 0 18px; border-left:2px solid var(--line); padding-left:13px; display:flex; flex-direction:column; gap:0; }
+  .cmt-replies .cmt{ padding:9px 0; border-bottom:none; border-top:1px solid var(--line-2); background:none; }
+  .cmt-replies .cmt:first-child{ border-top:none; }
+  .cmt-reply-form{ margin:8px 0 0 18px; padding:10px 13px; background:var(--bg); border:1px solid var(--line); border-radius:9px; display:flex; flex-direction:column; gap:7px; }
+  .cmt-reply-form .form-row{ gap:6px; }
+  .cmt-reply-form .f[type=text],.cmt-reply-form input.f{ max-width:140px; }
 
   .verdict-area{ margin-top:12px; padding-top:10px; border-top:1px dashed var(--line); }
   .verdict-row{ display:flex; gap:6px; }
@@ -261,7 +270,7 @@ let stateName = "loading";   // loading | ok | error | setup
 let editing = false, askingPw = false, pwError = false, pwBusy = false, saving = false;
 let sessionPassword = null;  // 검증된 비번을 세션 동안만 메모리 보관(새로고침 시 사라짐)
 let historyOpen = false, historyItems = null, historyLoading = false;
-let comments = [], commentsLoaded = false, commentBusy = false;
+let comments = [], commentsLoaded = false, commentBusy = false, replyTo = null;
 let prices = {}, pricesAt = null, showReturns = false, pricesBusy = false;
 let autoSaveTimer = null;
 let privatePositions = {}; // ticker → {avgPrice, shares} — localStorage 캐시
@@ -729,9 +738,27 @@ async function submitComment(){
   commentBusy = true;
   const btn = document.getElementById('cmt-submit'); if(btn) btn.disabled=true;
   try{
-    const r = await fetch(API_URL+'?action=addcomment&user='+encodeURIComponent(currentUser)+'&nickname='+encodeURIComponent(nick)+'&content='+encodeURIComponent(body));
+    const r = await fetch(API_URL+'?action=addcomment&nickname='+encodeURIComponent(nick)+'&content='+encodeURIComponent(body)+'&parentTs=0');
     const res = await r.json();
     if(res && res.ok){ toast('댓글이 등록됐어요'); document.getElementById('cmt-body').value=''; commentsLoaded=false; await loadComments(); }
+    else toast('등록 실패');
+  }catch(e){ toast('등록 실패'); }
+  commentBusy = false;
+}
+
+async function submitReply(parentTs){
+  const nickEl = document.getElementById('rep-nick-'+parentTs);
+  const bodyEl = document.getElementById('rep-body-'+parentTs);
+  const nick = (nickEl&&nickEl.value.trim()) || document.getElementById('cmt-nick').value.trim();
+  const body = bodyEl ? bodyEl.value.trim() : '';
+  if(!nick || !body){ toast('닉네임과 내용을 입력해주세요'); return; }
+  if(commentBusy) return;
+  commentBusy = true;
+  const btn = document.getElementById('rep-submit-'+parentTs); if(btn) btn.disabled=true;
+  try{
+    const r = await fetch(API_URL+'?action=addcomment&nickname='+encodeURIComponent(nick)+'&content='+encodeURIComponent(body)+'&parentTs='+parentTs);
+    const res = await r.json();
+    if(res && res.ok){ toast('답글이 등록됐어요'); replyTo=null; commentsLoaded=false; await loadComments(); }
     else toast('등록 실패');
   }catch(e){ toast('등록 실패'); }
   commentBusy = false;
@@ -746,8 +773,15 @@ function renderComments(){
   if(!commentsLoaded){ host.innerHTML='<div class="clab">댓글</div>'; loadComments(); return; }
 
   host.innerHTML = '';
-  host.appendChild(mk("div","clab","댓글 · "+comments.length+"개"));
+  const topLevel = comments.filter(c=>!c.parentTs);
+  const replyMap = {};
+  comments.filter(c=>c.parentTs).forEach(c=>{ (replyMap[c.parentTs]||(replyMap[c.parentTs]=[])).push(c); });
+  // replies sorted oldest-first for natural reading order
+  Object.values(replyMap).forEach(arr=>arr.sort((a,b)=>a.ts-b.ts));
 
+  host.appendChild(mk("div","clab","댓글 · "+topLevel.length+"개"));
+
+  // 댓글 작성 폼
   const form = mk("div","comment-form");
   const row = mk("div","form-row");
   const nickInp = document.createElement("input"); nickInp.className="f"; nickInp.id="cmt-nick"; nickInp.placeholder="닉네임"; nickInp.maxLength=20;
@@ -756,15 +790,54 @@ function renderComments(){
   const bodyTa = document.createElement("textarea"); bodyTa.className="f"; bodyTa.id="cmt-body"; bodyTa.rows=2; bodyTa.placeholder="댓글을 입력하세요"; bodyTa.maxLength=300;
   form.appendChild(row); form.appendChild(bodyTa); host.appendChild(form);
 
-  if(comments.length===0){
+  if(topLevel.length===0){
     host.appendChild(mk("div","ledger-cap","아직 댓글이 없어요. 첫 댓글을 남겨보세요!"));
   } else {
     const list = mk("div","cmt-list");
-    comments.forEach(c=>{
-      const item=mk("div","cmt");
-      const h=mk("div","cmt-head");
-      h.appendChild(mk("span","cmt-nick",c.nickname)); h.appendChild(mk("span","cmt-time",fmt(c.ts)));
-      item.appendChild(h); item.appendChild(mk("div","cmt-body",c.content));
+    topLevel.forEach(c=>{
+      const item = mk("div","cmt");
+
+      // 댓글 헤더 + 답글 버튼
+      const h = mk("div","cmt-head");
+      h.appendChild(mk("span","cmt-nick",c.nickname));
+      h.appendChild(mk("span","cmt-time",fmt(c.ts)));
+      const rBtn = mk("button","cmt-reply-btn"+(replyTo===c.ts?" active":""),"↩ 답글");
+      rBtn.onclick=()=>{ replyTo=(replyTo===c.ts?null:c.ts); renderComments(); };
+      h.appendChild(rBtn);
+      item.appendChild(h);
+      item.appendChild(mk("div","cmt-body",c.content));
+
+      // 대댓글 목록
+      const replies = replyMap[c.ts]||[];
+      if(replies.length){
+        const repList = mk("div","cmt-replies");
+        replies.forEach(r=>{
+          const ri = mk("div","cmt");
+          const rh = mk("div","cmt-head");
+          rh.appendChild(mk("span","cmt-nick","↳ "+r.nickname));
+          rh.appendChild(mk("span","cmt-time",fmt(r.ts)));
+          ri.appendChild(rh);
+          ri.appendChild(mk("div","cmt-body",r.content));
+          repList.appendChild(ri);
+        });
+        item.appendChild(repList);
+      }
+
+      // 답글 작성 폼 (토글)
+      if(replyTo===c.ts){
+        const rf = mk("div","cmt-reply-form");
+        const rrow = mk("div","form-row");
+        const rNick = document.createElement("input"); rNick.className="f"; rNick.id="rep-nick-"+c.ts; rNick.placeholder="닉네임"; rNick.maxLength=20;
+        const mainNick = document.getElementById('cmt-nick'); if(mainNick&&mainNick.value) rNick.value=mainNick.value;
+        const rSub = mk("button","btn primary","등록"); rSub.id="rep-submit-"+c.ts; rSub.onclick=(ts=>()=>submitReply(ts))(c.ts);
+        const rCan = mk("button","btn","취소"); rCan.onclick=()=>{ replyTo=null; renderComments(); };
+        rrow.appendChild(rNick); rrow.appendChild(rSub); rrow.appendChild(rCan);
+        const rBody = document.createElement("textarea"); rBody.className="f"; rBody.id="rep-body-"+c.ts; rBody.rows=2; rBody.placeholder="답글을 입력하세요"; rBody.maxLength=300;
+        rf.appendChild(rrow); rf.appendChild(rBody);
+        item.appendChild(rf);
+        setTimeout(()=>{ const el=document.getElementById('rep-body-'+c.ts); if(el) el.focus(); },50);
+      }
+
       list.appendChild(item);
     });
     host.appendChild(list);
