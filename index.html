@@ -170,6 +170,25 @@
   .toast{ position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff; font-size:13px; padding:10px 17px; border-radius:10px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; font-weight:500; z-index:70; max-width:90vw; }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
+  /* ── 캘린더 ── */
+  .cal-widget{ background:var(--card); border:1px solid var(--line); border-radius:13px; padding:14px 17px; margin-bottom:18px; }
+  .cal-hdr{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+  .cal-hdr-lab{ font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2); }
+  .cal-strip{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .cal-strip-date{ font-family:var(--font-mono); font-size:11.5px; font-weight:600; color:var(--ink-3); margin-bottom:5px; }
+  .cal-chip{ display:inline-block; font-size:13px; font-weight:700; padding:5px 11px; border-radius:7px; border:1px solid transparent; }
+  .cal-empty{ font-size:12.5px; color:var(--ink-3); }
+  .cal-month-wrap{ border-top:1px solid var(--line); margin-top:13px; padding-top:13px; }
+  .cal-month-nav{ display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
+  .cal-month-label{ font-weight:700; font-size:14px; }
+  .cal-month-hrow,.cal-month-row{ display:grid; grid-template-columns:repeat(7,1fr); }
+  .cal-month-dh{ text-align:center; font-family:var(--font-mono); font-size:10.5px; color:var(--ink-3); padding:3px 0 5px; }
+  .cal-month-cell{ min-height:48px; padding:3px 4px; border:1px solid var(--line-2); }
+  .cal-month-cell.today{ background:#F0F7F4; border-color:var(--valid); }
+  .cal-dnum{ font-family:var(--font-mono); font-size:11px; font-weight:600; margin-bottom:2px; color:var(--ink); }
+  .cal-dnum.sun{ color:#EF4444; } .cal-dnum.sat{ color:#3B82F6; }
+  .cal-cell-chip{ font-size:10.5px; font-weight:700; padding:2px 4px; border-radius:4px; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cal-loading{ font-family:var(--font-mono); font-size:12px; color:var(--ink-3); }
   @media (max-width:520px){
     body{ padding:22px 14px 70px; } h1{ font-size:26px; } .grid2{ grid-template-columns:1fr; } .title-row{ align-items:flex-start; }
     .ledger-t th, .ledger-t td{ padding:10px 9px; font-size:12.5px; }
@@ -179,6 +198,7 @@
 </style>
 
 </head><body><div class="wrap">
+  <div id="cal-host"></div>
   <div class="mast">
     <div class="eyebrow">Thesis Board</div>
     <div id="user-tabs-host"></div>
@@ -213,6 +233,7 @@
    ▼ 1) 배포한 GAS 웹앱 주소(…/exec)  (thesis-board.gs 설정 6번) */
 const API_URL = "https://script.google.com/macros/s/AKfycbwKvHfqxIggH08RuxpCRAsJ29lnSA9BnPVGl86Bl3hJcqhDWDDek6UdSEwdoeMeXfus/exec";
 const DEFAULT_USER = "jinwook";
+const ICAL_URL = "https://calendar.google.com/calendar/ical/090l8qctq19pu2dmclcnnn4134%40group.calendar.google.com/public/basic.ics";
 /* ▼ 2) Cusdis 앱 ID  (cusdis.com 가입 → New Website → data-app-id 값)
         비워두면 댓글 영역에 "설정 필요" 안내만 떠요. */
 const CUSDIS_APP_ID = "5d7f96f3-255c-4c55-98fd-cddd08589e02";
@@ -235,6 +256,7 @@ let privatePositions = {}; // ticker → {avgPrice, shares} — localStorage 캐
 let verdictPending = null; // {i, status} — 비번 확인 후 적용할 상태 변경
 let killConds = {}; // ticker → string — pre-mortem 조건 (localStorage)
 let reviewed = {};  // ticker → timestamp — 마지막 검토 시각 (localStorage)
+let calEvents = [], calLoaded = false, calOpen = false, calViewMonth = null;
 
 function saveKillConds(){ try{ localStorage.setItem('killconds_'+currentUser, JSON.stringify(killConds)); }catch(e){} }
 function saveReviewed(){  try{ localStorage.setItem('reviewed_'+currentUser,  JSON.stringify(reviewed));  }catch(e){} }
@@ -777,6 +799,128 @@ function renderModal(){
   foot.appendChild(close); m.appendChild(foot); bg.appendChild(m); host.appendChild(bg);
 }
 
+/* ── 캘린더 ── */
+const SHIFT_STYLE = {
+  '주간':  { bg:'#DBEAFE', color:'#1E40AF' },
+  '야간':  { bg:'#1E293B', color:'#E2E8F0' },
+  '비번':  { bg:'#EDE9FE', color:'#5B21B6' },
+  '휴무':  { bg:'#D1FAE5', color:'#065F46' },
+  '휴가':  { bg:'#D1FAE5', color:'#065F46' },
+  'OFF':   { bg:'#D1FAE5', color:'#065F46' },
+};
+function shiftStyle(s){ for(const [k,v] of Object.entries(SHIFT_STYLE)) if(s.includes(k)) return v; return {bg:'#F3F4F6',color:'#374151'}; }
+
+function parseIcalDate(key, val){
+  const allDay = key.includes('VALUE=DATE') || (val.length===8 && !val.includes('T'));
+  if(allDay){ const y=+val.slice(0,4),m=+val.slice(4,6)-1,d=+val.slice(6,8); return {d:new Date(y,m,d),allDay:true}; }
+  const y=+val.slice(0,4),mo=+val.slice(4,6)-1,dy=+val.slice(6,8),h=+val.slice(9,11),mi=+val.slice(11,13),s=+val.slice(13,15);
+  return { d: val.endsWith('Z') ? new Date(Date.UTC(y,mo,dy,h,mi,s)) : new Date(y,mo,dy,h,mi,s), allDay:false };
+}
+
+function parseIcal(text){
+  text = text.replace(/\r\n[ \t]/g,'').replace(/\n[ \t]/g,'');
+  const evs=[]; const re=/BEGIN:VEVENT([\s\S]*?)END:VEVENT/g; let m;
+  while((m=re.exec(text))!==null){
+    const block=m[1], ev={};
+    const lr=/^([A-Z\-]+(?:;[^:]+)?):(.*)/gm; let lm;
+    while((lm=lr.exec(block))!==null){
+      const k=lm[1],v=lm[2].trim(),bk=k.split(';')[0];
+      if(bk==='DTSTART') ev.start=parseIcalDate(k,v);
+      if(bk==='DTEND')   ev.end=parseIcalDate(k,v);
+      if(bk==='SUMMARY') ev.summary=v.replace(/\\,/g,',').replace(/\\/g,'').trim();
+    }
+    if(ev.summary&&ev.start) evs.push(ev);
+  }
+  return evs;
+}
+
+function evOnDate(ev, date){
+  const check = new Date(date.getFullYear(),date.getMonth(),date.getDate());
+  const s = new Date(ev.start.d.getFullYear(),ev.start.d.getMonth(),ev.start.d.getDate());
+  const eRaw = ev.end ? ev.end.d : ev.start.d;
+  let e = new Date(eRaw.getFullYear(),eRaw.getMonth(),eRaw.getDate());
+  if(ev.start.allDay && ev.end) e.setDate(e.getDate()-1); // iCal allDay end is exclusive
+  return check >= s && check <= e;
+}
+
+async function fetchCal(){
+  const host = document.getElementById('cal-host'); if(!host) return;
+  host.innerHTML = '<div class="cal-widget"><span class="cal-loading">스케줄 불러오는 중…</span></div>';
+  try{
+    const r = await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(ICAL_URL));
+    if(!r.ok) throw new Error('fetch fail');
+    const text = await r.text();
+    calEvents = parseIcal(text);
+    calLoaded = true;
+    const now = new Date(); calViewMonth = {y:now.getFullYear(), m:now.getMonth()};
+  }catch(e){ calLoaded=false; }
+  renderCal();
+}
+
+function renderCal(){
+  const host = document.getElementById('cal-host'); if(!host) return;
+  host.innerHTML='';
+  if(!calLoaded){ host.innerHTML='<div class="cal-widget"><span class="cal-loading">스케줄을 불러오지 못했어요</span></div>'; return; }
+  const w = mk('div','cal-widget');
+  const hdr = mk('div','cal-hdr');
+  hdr.appendChild(mk('span','cal-hdr-lab','📅 스케줄'));
+  const togBtn = mk('button','btn sm', calOpen?'닫기':'월 전체 보기');
+  togBtn.onclick=()=>{ calOpen=!calOpen; renderCal(); };
+  hdr.appendChild(togBtn); w.appendChild(hdr);
+
+  if(!calOpen){
+    // 오늘/내일 strip
+    const strip = mk('div','cal-strip');
+    const today=new Date(), tomorrow=new Date(today); tomorrow.setDate(today.getDate()+1);
+    const DOW=['일','월','화','수','목','금','토'];
+    [today,tomorrow].forEach(date=>{
+      const col=mk('div'); col.appendChild(mk('div','cal-strip-date',`${date.getMonth()+1}/${date.getDate()} (${DOW[date.getDay()]})`));
+      const evs=calEvents.filter(ev=>evOnDate(ev,date));
+      if(evs.length){ evs.forEach(ev=>{ const chip=mk('div','cal-chip',ev.summary); const s=shiftStyle(ev.summary); chip.style.background=s.bg; chip.style.color=s.color; col.appendChild(chip); }); }
+      else col.appendChild(mk('div','cal-empty','일정 없음'));
+      strip.appendChild(col);
+    });
+    w.appendChild(strip);
+  } else {
+    // 월 달력
+    const mw=mk('div','cal-month-wrap');
+    const nav=mk('div','cal-month-nav');
+    const prev=mk('button','btn sm','‹'); prev.onclick=()=>{ calViewMonth.m--; if(calViewMonth.m<0){calViewMonth.m=11;calViewMonth.y--;} renderCal(); };
+    const next=mk('button','btn sm','›'); next.onclick=()=>{ calViewMonth.m++; if(calViewMonth.m>11){calViewMonth.m=0;calViewMonth.y++;} renderCal(); };
+    nav.appendChild(prev);
+    nav.appendChild(mk('span','cal-month-label',`${calViewMonth.y}년 ${calViewMonth.m+1}월`));
+    nav.appendChild(next); mw.appendChild(nav);
+    const DOW=['일','월','화','수','목','금','토'];
+    const hrow=mk('div','cal-month-hrow');
+    DOW.forEach((d,i)=>{ const dh=mk('div','cal-month-dh',d); if(i===0)dh.style.color='#EF4444'; if(i===6)dh.style.color='#3B82F6'; hrow.appendChild(dh); });
+    mw.appendChild(hrow);
+    const first=new Date(calViewMonth.y,calViewMonth.m,1);
+    const last=new Date(calViewMonth.y,calViewMonth.m+1,0);
+    const today=new Date();
+    const cells=[]; for(let i=0;i<first.getDay();i++) cells.push(null);
+    for(let d=1;d<=last.getDate();d++) cells.push(new Date(calViewMonth.y,calViewMonth.m,d));
+    while(cells.length%7!==0) cells.push(null);
+    for(let r=0;r<cells.length/7;r++){
+      const row=mk('div','cal-month-row');
+      for(let c=0;c<7;c++){
+        const date=cells[r*7+c];
+        const cell=mk('div','cal-month-cell');
+        if(date){
+          const isToday=date.toDateString()===today.toDateString(); if(isToday) cell.classList.add('today');
+          const dnum=mk('div','cal-dnum',String(date.getDate()));
+          if(c===0) dnum.classList.add('sun'); if(c===6) dnum.classList.add('sat');
+          cell.appendChild(dnum);
+          calEvents.filter(ev=>evOnDate(ev,date)).forEach(ev=>{ const chip=mk('div','cal-cell-chip',ev.summary); const s=shiftStyle(ev.summary); chip.style.background=s.bg; chip.style.color=s.color; cell.appendChild(chip); });
+        }
+        row.appendChild(cell);
+      }
+      mw.appendChild(row);
+    }
+    w.appendChild(mw);
+  }
+  host.appendChild(w);
+}
+
 /* ── 헬퍼 ── */
 function segEl(p){
   const seg = mk("div","seg");
@@ -808,6 +952,7 @@ try {
   if (cachedRev) reviewed = cachedRev;
 } catch(e) {}
 loadUsers().then(()=>{ renderUserTabs(); load(); });
+fetchCal();
 document.getElementById('site-updated').textContent = fmt(new Date(document.lastModified));
 </script>
 </body></html>
