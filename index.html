@@ -866,18 +866,57 @@ function parseIcalDate(key, val){
 
 function parseIcal(text){
   text = text.replace(/\r\n[ \t]/g,'').replace(/\n[ \t]/g,'');
-  const evs=[]; const re=/BEGIN:VEVENT([\s\S]*?)END:VEVENT/g; let m;
+  const evs=[], recurBases=[];
+  const re=/BEGIN:VEVENT([\s\S]*?)END:VEVENT/g; let m;
   while((m=re.exec(text))!==null){
     const block=m[1], ev={};
     const lr=/^([A-Z\-]+(?:;[^:]+)?):(.*)/gm; let lm;
     while((lm=lr.exec(block))!==null){
       const k=lm[1],v=lm[2].trim(),bk=k.split(';')[0];
-      if(bk==='DTSTART') ev.start=parseIcalDate(k,v);
-      if(bk==='DTEND')   ev.end=parseIcalDate(k,v);
-      if(bk==='SUMMARY') ev.summary=v.replace(/\\,/g,',').replace(/\\/g,'').trim();
+      if(bk==='DTSTART')       ev.start=parseIcalDate(k,v);
+      if(bk==='DTEND')         ev.end=parseIcalDate(k,v);
+      if(bk==='SUMMARY')       ev.summary=v.replace(/\\,/g,',').replace(/\\/g,'').trim();
+      if(bk==='RRULE')         ev.rrule=v;
+      if(bk==='RECURRENCE-ID') ev.recId=parseIcalDate(k,v);
     }
-    if(ev.summary&&ev.start) evs.push(ev);
+    if(ev.summary&&ev.start){
+      if(ev.rrule) recurBases.push(ev);
+      else evs.push(ev);
+    }
   }
+  // RRULE expansion: only FREQ=DAILY supported (covers the 10일마다 shift pattern)
+  const SHIFT_LABELS=['D','A','N','DA','NA','W'];
+  const today=new Date(); today.setHours(0,0,0,0);
+  const past=new Date(today);   past.setDate(past.getDate()-90);
+  const future=new Date(today); future.setDate(future.getDate()+200);
+  // Track dates that already have individual shift events (modified occurrences take priority)
+  const takenKeys=new Set(evs
+    .filter(e=>{const u=e.summary.toUpperCase();return SHIFT_LABELS.some(s=>u===s||u.startsWith(s+'('));})
+    .map(e=>{const d=e.recId?e.recId.d:e.start.d;return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();})
+  );
+  recurBases.forEach(base=>{
+    if(!/FREQ=DAILY/i.test(base.rrule)) return;
+    const dm=base.rrule.match(/INTERVAL=(\d+)/i); if(!dm) return;
+    const interval=parseInt(dm[1]);
+    let until=null;
+    const um=base.rrule.match(/UNTIL=(\d{8})/i);
+    if(um){const uv=um[1];until=new Date(+uv.slice(0,4),+uv.slice(4,6)-1,+uv.slice(6,8));}
+    const cutoff=until?new Date(Math.min(until.getTime(),future.getTime())):future;
+    const dur=base.end?base.end.d.getTime()-base.start.d.getTime():86400000;
+    let curr=new Date(base.start.d);
+    while(curr<=cutoff){
+      if(curr>=past){
+        const key=curr.getFullYear()+'-'+(curr.getMonth()+1)+'-'+curr.getDate();
+        if(!takenKeys.has(key)){
+          evs.push({summary:base.summary,
+            start:{d:new Date(curr),allDay:base.start.allDay},
+            end:{d:new Date(curr.getTime()+dur),allDay:base.start.allDay}});
+          takenKeys.add(key);
+        }
+      }
+      curr.setDate(curr.getDate()+interval);
+    }
+  });
   return evs;
 }
 
