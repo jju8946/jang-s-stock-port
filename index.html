@@ -174,20 +174,27 @@
   .cal-widget{ background:var(--card); border:1px solid var(--line); border-radius:13px; padding:14px 17px; margin-bottom:18px; }
   .cal-hdr{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
   .cal-hdr-lab{ font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2); }
-  .cal-strip{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .cal-strip-date{ font-family:var(--font-mono); font-size:11.5px; font-weight:600; color:var(--ink-3); margin-bottom:5px; }
-  .cal-chip{ display:inline-block; font-size:13px; font-weight:700; padding:5px 11px; border-radius:7px; border:1px solid transparent; }
+  .cal-strip{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .cal-strip-date{ font-family:var(--font-mono); font-size:11.5px; font-weight:600; color:var(--ink-3); margin-bottom:6px; }
+  .cal-chip{ display:inline-block; font-size:14px; font-weight:700; padding:5px 13px; border-radius:7px; }
+  .cal-time{ font-family:var(--font-mono); font-size:12px; color:var(--ink-2); margin-top:5px; }
   .cal-empty{ font-size:12.5px; color:var(--ink-3); }
+  .cal-week-section{ margin-top:14px; padding-top:13px; border-top:1px solid var(--line); }
+  .cal-week-label{ font-family:var(--font-mono); font-size:10.5px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }
+  .cal-week-table{ width:100%; border-collapse:collapse; table-layout:fixed; }
+  .cal-week-th{ font-family:var(--font-mono); font-size:10.5px; text-align:center; padding:2px 1px 5px; color:var(--ink-3); }
+  .cal-week-td{ text-align:center; padding:4px 2px; vertical-align:middle; }
+  .cal-week-today{ background:#F0F7F4; border-radius:5px; }
+  .cal-cell-chip{ font-size:11px; font-weight:700; padding:3px 5px; border-radius:5px; display:inline-block; }
   .cal-month-wrap{ border-top:1px solid var(--line); margin-top:13px; padding-top:13px; }
   .cal-month-nav{ display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
   .cal-month-label{ font-weight:700; font-size:14px; }
   .cal-month-hrow,.cal-month-row{ display:grid; grid-template-columns:repeat(7,1fr); }
   .cal-month-dh{ text-align:center; font-family:var(--font-mono); font-size:10.5px; color:var(--ink-3); padding:3px 0 5px; }
-  .cal-month-cell{ min-height:48px; padding:3px 4px; border:1px solid var(--line-2); }
+  .cal-month-cell{ min-height:46px; padding:3px 4px; border:1px solid var(--line-2); }
   .cal-month-cell.today{ background:#F0F7F4; border-color:var(--valid); }
   .cal-dnum{ font-family:var(--font-mono); font-size:11px; font-weight:600; margin-bottom:2px; color:var(--ink); }
   .cal-dnum.sun{ color:#EF4444; } .cal-dnum.sat{ color:#3B82F6; }
-  .cal-cell-chip{ font-size:10.5px; font-weight:700; padding:2px 4px; border-radius:4px; margin-bottom:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .cal-loading{ font-family:var(--font-mono); font-size:12px; color:var(--ink-3); }
   @media (max-width:520px){
     body{ padding:22px 14px 70px; } h1{ font-size:26px; } .grid2{ grid-template-columns:1fr; } .title-row{ align-items:flex-start; }
@@ -800,15 +807,26 @@ function renderModal(){
 }
 
 /* ── 캘린더 ── */
-const SHIFT_STYLE = {
-  '주간':  { bg:'#DBEAFE', color:'#1E40AF' },
-  '야간':  { bg:'#1E293B', color:'#E2E8F0' },
-  '비번':  { bg:'#EDE9FE', color:'#5B21B6' },
-  '휴무':  { bg:'#D1FAE5', color:'#065F46' },
-  '휴가':  { bg:'#D1FAE5', color:'#065F46' },
-  'OFF':   { bg:'#D1FAE5', color:'#065F46' },
+const SHIFT_INFO = {
+  'D': { bg:'#DBEAFE', color:'#1E40AF', time:'07:00 ~ 14:00' },
+  'A': { bg:'#FEF3C7', color:'#92400E', time:'14:00 ~ 20:00' },
+  'N': { bg:'#1E293B', color:'#E2E8F0', time:'전날 20:00 ~ 07:00' },
+  '비번': { bg:'#EDE9FE', color:'#5B21B6', time:'' },
+  '휴무': { bg:'#D1FAE5', color:'#065F46', time:'' },
+  '휴가': { bg:'#D1FAE5', color:'#065F46', time:'' },
 };
-function shiftStyle(s){ for(const [k,v] of Object.entries(SHIFT_STYLE)) if(s.includes(k)) return v; return {bg:'#F3F4F6',color:'#374151'}; }
+function getShiftInfo(s){
+  const u = s.trim().toUpperCase();
+  if(u==='D'||u.startsWith('D ')) return SHIFT_INFO['D'];
+  if(u==='A'||u.startsWith('A ')) return SHIFT_INFO['A'];
+  if(u==='N'||u.startsWith('N ')) return SHIFT_INFO['N'];
+  for(const [k,v] of Object.entries(SHIFT_INFO)) if(s.includes(k)) return v;
+  return {bg:'#F3F4F6', color:'#374151', time:''};
+}
+function getWeekMon(date){
+  const d=new Date(date); d.setHours(0,0,0,0);
+  const day=d.getDay(); d.setDate(d.getDate()-(day===0?6:day-1)); return d;
+}
 
 function parseIcalDate(key, val){
   const allDay = key.includes('VALUE=DATE') || (val.length===8 && !val.includes('T'));
@@ -849,8 +867,7 @@ async function fetchCal(){
   try{
     const r = await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(ICAL_URL));
     if(!r.ok) throw new Error('fetch fail');
-    const text = await r.text();
-    calEvents = parseIcal(text);
+    calEvents = parseIcal(await r.text());
     calLoaded = true;
     const now = new Date(); calViewMonth = {y:now.getFullYear(), m:now.getMonth()};
   }catch(e){ calLoaded=false; }
@@ -862,55 +879,94 @@ function renderCal(){
   host.innerHTML='';
   if(!calLoaded){ host.innerHTML='<div class="cal-widget"><span class="cal-loading">스케줄을 불러오지 못했어요</span></div>'; return; }
   const w = mk('div','cal-widget');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const DOW = ['일','월','화','수','목','금','토'];
+
+  // 헤더
   const hdr = mk('div','cal-hdr');
   hdr.appendChild(mk('span','cal-hdr-lab','📅 스케줄'));
-  const togBtn = mk('button','btn sm', calOpen?'닫기':'월 전체 보기');
+  const togBtn = mk('button','btn sm', calOpen?'달력 닫기':'이번 달');
   togBtn.onclick=()=>{ calOpen=!calOpen; renderCal(); };
   hdr.appendChild(togBtn); w.appendChild(hdr);
 
-  if(!calOpen){
-    // 오늘/내일 strip
-    const strip = mk('div','cal-strip');
-    const today=new Date(), tomorrow=new Date(today); tomorrow.setDate(today.getDate()+1);
-    const DOW=['일','월','화','수','목','금','토'];
-    [today,tomorrow].forEach(date=>{
-      const col=mk('div'); col.appendChild(mk('div','cal-strip-date',`${date.getMonth()+1}/${date.getDate()} (${DOW[date.getDay()]})`));
-      const evs=calEvents.filter(ev=>evOnDate(ev,date));
-      if(evs.length){ evs.forEach(ev=>{ const chip=mk('div','cal-chip',ev.summary); const s=shiftStyle(ev.summary); chip.style.background=s.bg; chip.style.color=s.color; col.appendChild(chip); }); }
-      else col.appendChild(mk('div','cal-empty','일정 없음'));
-      strip.appendChild(col);
-    });
-    w.appendChild(strip);
-  } else {
-    // 월 달력
+  // 오늘/내일
+  const strip = mk('div','cal-strip');
+  [today, new Date(today.getTime()+864e5)].forEach(date=>{
+    const col = mk('div','cal-strip-col');
+    col.appendChild(mk('div','cal-strip-date',`${date.getMonth()+1}/${date.getDate()} (${DOW[date.getDay()]})`));
+    const evs = calEvents.filter(ev=>evOnDate(ev,date));
+    if(evs.length){
+      evs.forEach(ev=>{
+        const info=getShiftInfo(ev.summary);
+        const chip=mk('div','cal-chip',ev.summary); chip.style.background=info.bg; chip.style.color=info.color;
+        col.appendChild(chip);
+        if(info.time) col.appendChild(mk('div','cal-time',info.time));
+      });
+    } else col.appendChild(mk('div','cal-empty','일정 없음'));
+    strip.appendChild(col);
+  });
+  w.appendChild(strip);
+
+  // 이번 주 표
+  const mon = getWeekMon(today);
+  const weekDays = Array.from({length:7},(_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return d; });
+  const wsec = mk('div','cal-week-section');
+  wsec.appendChild(mk('div','cal-week-label','이번 주'));
+  const tbl=document.createElement('table'); tbl.className='cal-week-table';
+  const thead=document.createElement('thead'), hrow=document.createElement('tr');
+  weekDays.forEach((d,i)=>{
+    const th=document.createElement('th'); th.className='cal-week-th';
+    th.textContent=['월','화','수','목','금','토','일'][i];
+    if(i===5) th.style.color='#3B82F6'; if(i===6) th.style.color='#EF4444';
+    if(d.toDateString()===today.toDateString()) th.style.color='var(--valid)';
+    hrow.appendChild(th);
+  });
+  thead.appendChild(hrow); tbl.appendChild(thead);
+  const tbody=document.createElement('tbody'), tr=document.createElement('tr');
+  weekDays.forEach(d=>{
+    const td=document.createElement('td'); td.className='cal-week-td';
+    if(d.toDateString()===today.toDateString()) td.classList.add('cal-week-today');
+    const evs=calEvents.filter(ev=>evOnDate(ev,d));
+    if(evs.length){
+      evs.forEach(ev=>{
+        const info=getShiftInfo(ev.summary);
+        const chip=mk('div','cal-cell-chip',ev.summary); chip.style.background=info.bg; chip.style.color=info.color;
+        td.appendChild(chip);
+      });
+    } else { const dot=mk('span','','·'); dot.style.color='var(--ink-3)'; td.appendChild(dot); }
+    tr.appendChild(td);
+  });
+  tbody.appendChild(tr); tbl.appendChild(tbody); wsec.appendChild(tbl); w.appendChild(wsec);
+
+  // 월 달력 (토글)
+  if(calOpen && calViewMonth){
     const mw=mk('div','cal-month-wrap');
     const nav=mk('div','cal-month-nav');
     const prev=mk('button','btn sm','‹'); prev.onclick=()=>{ calViewMonth.m--; if(calViewMonth.m<0){calViewMonth.m=11;calViewMonth.y--;} renderCal(); };
     const next=mk('button','btn sm','›'); next.onclick=()=>{ calViewMonth.m++; if(calViewMonth.m>11){calViewMonth.m=0;calViewMonth.y++;} renderCal(); };
-    nav.appendChild(prev);
-    nav.appendChild(mk('span','cal-month-label',`${calViewMonth.y}년 ${calViewMonth.m+1}월`));
-    nav.appendChild(next); mw.appendChild(nav);
-    const DOW=['일','월','화','수','목','금','토'];
-    const hrow=mk('div','cal-month-hrow');
-    DOW.forEach((d,i)=>{ const dh=mk('div','cal-month-dh',d); if(i===0)dh.style.color='#EF4444'; if(i===6)dh.style.color='#3B82F6'; hrow.appendChild(dh); });
-    mw.appendChild(hrow);
-    const first=new Date(calViewMonth.y,calViewMonth.m,1);
-    const last=new Date(calViewMonth.y,calViewMonth.m+1,0);
-    const today=new Date();
+    nav.appendChild(prev); nav.appendChild(mk('span','cal-month-label',`${calViewMonth.y}년 ${calViewMonth.m+1}월`)); nav.appendChild(next);
+    mw.appendChild(nav);
+    const mhrow=mk('div','cal-month-hrow');
+    DOW.forEach((d,i)=>{ const dh=mk('div','cal-month-dh',d); if(i===0)dh.style.color='#EF4444'; if(i===6)dh.style.color='#3B82F6'; mhrow.appendChild(dh); });
+    mw.appendChild(mhrow);
+    const first=new Date(calViewMonth.y,calViewMonth.m,1), last=new Date(calViewMonth.y,calViewMonth.m+1,0);
     const cells=[]; for(let i=0;i<first.getDay();i++) cells.push(null);
     for(let d=1;d<=last.getDate();d++) cells.push(new Date(calViewMonth.y,calViewMonth.m,d));
     while(cells.length%7!==0) cells.push(null);
     for(let r=0;r<cells.length/7;r++){
       const row=mk('div','cal-month-row');
       for(let c=0;c<7;c++){
-        const date=cells[r*7+c];
-        const cell=mk('div','cal-month-cell');
+        const date=cells[r*7+c]; const cell=mk('div','cal-month-cell');
         if(date){
-          const isToday=date.toDateString()===today.toDateString(); if(isToday) cell.classList.add('today');
-          const dnum=mk('div','cal-dnum',String(date.getDate()));
-          if(c===0) dnum.classList.add('sun'); if(c===6) dnum.classList.add('sat');
-          cell.appendChild(dnum);
-          calEvents.filter(ev=>evOnDate(ev,date)).forEach(ev=>{ const chip=mk('div','cal-cell-chip',ev.summary); const s=shiftStyle(ev.summary); chip.style.background=s.bg; chip.style.color=s.color; cell.appendChild(chip); });
+          if(date.toDateString()===today.toDateString()) cell.classList.add('today');
+          const dn=mk('div','cal-dnum',String(date.getDate()));
+          if(c===0) dn.classList.add('sun'); if(c===6) dn.classList.add('sat');
+          cell.appendChild(dn);
+          calEvents.filter(ev=>evOnDate(ev,date)).forEach(ev=>{
+            const info=getShiftInfo(ev.summary);
+            const chip=mk('div','cal-cell-chip',ev.summary); chip.style.background=info.bg; chip.style.color=info.color;
+            cell.appendChild(chip);
+          });
         }
         row.appendChild(cell);
       }
