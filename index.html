@@ -212,6 +212,33 @@
   }
   @media (prefers-reduced-motion:reduce){ *{ animation:none !important; transition:none !important; } .mast,.card,.ledger{ opacity:1; transform:none; } }
   @keyframes rise{ to{ opacity:1; transform:translateY(0);} }
+
+  /* ── 투자 원칙 ── */
+  .principles-section{ margin-top:32px; }
+  .phil-cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; margin-top:12px; }
+  .phil-card{ background:var(--card); border:1px solid var(--line); border-radius:11px; padding:14px 16px; }
+  .phil-icon{ font-size:18px; margin-bottom:7px; }
+  .phil-title{ font-weight:700; font-size:13px; margin-bottom:4px; color:var(--ink); }
+  .phil-body{ font-size:12.5px; color:var(--ink-2); line-height:1.55; }
+  .my-principles{ margin-top:14px; padding:14px 16px; background:var(--card); border:1px solid var(--line); border-left:3px solid var(--brand); border-radius:11px; }
+  .my-principles .mp-lab{ font-family:var(--font-mono); font-size:10.5px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3); display:block; margin-bottom:8px; }
+
+  /* ── 종목 태그 ── */
+  .pos-tags{ display:flex; gap:5px; flex-wrap:wrap; margin-top:8px; }
+  .pos-tag{ font-family:var(--font-mono); font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--ink-2); background:var(--paper); }
+  .pos-tag.b2b{ color:#1E40AF; background:#DBEAFE; border-color:#BFDBFE; }
+  .pos-tag.b2c{ color:#065F46; background:#D1FAE5; border-color:#A7F3D0; }
+  .pos-tag.order{ color:#5B21B6; background:#EDE9FE; border-color:#DDD6FE; }
+  .pos-tag.short{ color:#7C3AED; background:#F5F3FF; border-color:#DDD6FE; }
+  .pos-tag.mid{ color:#B5851A; background:#FEF3C7; border-color:#FDE68A; }
+  .pos-tag.long{ color:#0E7490; background:#CFFAFE; border-color:#A5F3FC; }
+  .seg button.on.b2b{ color:#1E40AF; background:#DBEAFE; }
+  .seg button.on.b2c{ color:#065F46; background:#D1FAE5; }
+  .seg button.on.order{ color:#5B21B6; background:#EDE9FE; }
+  .seg button.on.short{ color:#7C3AED; background:#F5F3FF; }
+  .seg button.on.mid{ color:#B5851A; background:#FEF3C7; }
+  .seg button.on.long{ color:#0E7490; background:#CFFAFE; }
+  .anchor-banner{ margin-bottom:10px; padding:10px 14px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:9px; font-size:13px; color:#1D4ED8; font-weight:600; line-height:1.4; }
 </style>
 
 </head><body><div class="wrap">
@@ -237,6 +264,7 @@
   <div id="overall-host"><div class="notice"><b>설정이 필요해요</b><span>함께 받은 Apps Script(thesis-board.gs)를 배포하면 …/exec 주소가 나와요. 그 주소를 이 코드 상단 API_URL에 넣으면 연결됩니다.</span></div></div>
   <div id="list" class="list"></div>
   <div id="ledger-host"></div>
+  <div id="principles-host"></div>
   <div id="savebar-host"></div>
   <section id="comments" style="display: none;"></section>
   <div class="foot" id="foot">data: Google Sheet (Apps Script) · 공개 화면은 비중만 표시됩니다 · 사이트 업데이트 <span id="site-updated"></span><br>
@@ -278,9 +306,15 @@ let verdictPending = null; // {i, status} — 비번 확인 후 적용할 상태
 let killConds = {}; // ticker → string — pre-mortem 조건 (localStorage)
 let reviewed = {};  // ticker → timestamp — 마지막 검토 시각 (localStorage)
 let calEvents = [], calLoaded = false, calOpen = false, calViewMonth = null;
+let anchorHidden = false;
+let posTags = {};       // ticker → {type:'B2B'|'B2C'|'수주', horizon:'단기'|'중기'|'장기'}
+let myPrinciples = '';
+let principlesOpen = false;
 
 function saveKillConds(){ try{ localStorage.setItem('killconds_'+currentUser, JSON.stringify(killConds)); }catch(e){} }
 function saveReviewed(){  try{ localStorage.setItem('reviewed_'+currentUser,  JSON.stringify(reviewed));  }catch(e){} }
+function savePosTags(){   try{ localStorage.setItem('pos_tags_'+currentUser,  JSON.stringify(posTags));   }catch(e){} }
+function saveMyPrinciples(){ try{ localStorage.setItem('my_principles_'+currentUser, myPrinciples); }catch(e){} }
 
 /* ── 현재가 조회 (Apps Script → 네이버 금융) ── */
 async function fetchPrices(){
@@ -354,7 +388,10 @@ function switchUser(id){
     if(c && c.prices){ prices=c.prices; pricesAt=new Date(c.pricesAt); } else { prices={}; pricesAt=null; }
     const cp = JSON.parse(localStorage.getItem('private_positions_'+currentUser)||'null');
     privatePositions = cp || {};
-  }catch(e){ prices={}; pricesAt=null; privatePositions={}; }
+    const cpt = JSON.parse(localStorage.getItem('pos_tags_'+currentUser)||'null');
+    posTags = cpt || {};
+    myPrinciples = localStorage.getItem('my_principles_'+currentUser) || '';
+  }catch(e){ prices={}; pricesAt=null; privatePositions={}; posTags={}; myPrinciples=''; }
   load();
 }
 
@@ -404,7 +441,7 @@ async function quickSave(){
 }
 
 /* ── 렌더 ── */
-function renderAll(){ renderUserTabs(); renderMeta(); renderActions(); renderOverall(); renderList(); renderLedger(); renderComments(); renderSavebar(); renderModal(); }
+function renderAll(){ renderUserTabs(); renderMeta(); renderActions(); renderOverall(); renderList(); renderLedger(); renderPhilosophy(); renderComments(); renderSavebar(); renderModal(); }
 
 function renderMeta(){
   document.getElementById("pf-title").textContent = board.title || "포트폴리오";
@@ -496,6 +533,7 @@ function renderList(){
       if (p.ticker) ident.appendChild(mk("span","ticker", p.ticker));
       const chip = mk("div","chip "+p.status, ""); chip.innerHTML = '<span class="dot '+p.status+'"></span>'+STATUS_KO[p.status];
       head.appendChild(ident); head.appendChild(chip); card.appendChild(head);
+      if(p.ticker){ const ptags=posTags[p.ticker]||{}; if(ptags.type||ptags.horizon){ const tagRow=mk("div","pos-tags"); const tMap={'B2B':'b2b','B2C':'b2c','수주':'order'}; const hMap={'단기':'short','중기':'mid','장기':'long'}; const hLabel={'단기':'단기 6M','중기':'중기 1Y','장기':'장기 2Y+'}; if(ptags.type) tagRow.appendChild(mk("span","pos-tag "+(tMap[ptags.type]||''),ptags.type)); if(ptags.horizon) tagRow.appendChild(mk("span","pos-tag "+(hMap[ptags.horizon]||''),hLabel[ptags.horizon]||ptags.horizon)); card.appendChild(tagRow); } }
       card.appendChild(mk("div","idea"+(p.idea&&p.idea.trim()?"":" empty"), p.idea && p.idea.trim() ? p.idea : "메인 아이디어가 비어 있어요"));
       if (p.note && p.note.trim()) card.appendChild(mk("div","note", p.note));
 
@@ -562,6 +600,24 @@ function renderList(){
       const mktSeg=mk("div","seg");
       [["KOSPI","코스피"],["KOSDAQ","코스닥"]].forEach(([k,ko])=>{ const b=document.createElement("button"); b.textContent=ko; if((p.market||"KOSPI")===k) b.className="on valid"; b.onclick=()=>{ p.market=k; renderList(); }; mktSeg.appendChild(b); });
       card.appendChild(mktSeg);
+      if(p.ticker){
+        card.appendChild(labEl("사업 유형 (태그)"));
+        const typeSeg=mk("div","seg");
+        [["B2B","b2b"],["B2C","b2c"],["수주","order"]].forEach(([k,cls])=>{
+          const bt=mk("button",""+(( (posTags[p.ticker]||{}).type===k)?" on "+cls:""),k);
+          bt.onclick=(()=>{const kk=k;return ()=>{ if(!posTags[p.ticker]) posTags[p.ticker]={}; posTags[p.ticker].type=(posTags[p.ticker].type===kk?null:kk); savePosTags(); renderList(); }; })();
+          typeSeg.appendChild(bt);
+        });
+        card.appendChild(typeSeg);
+        card.appendChild(labEl("투자 호라이즌"));
+        const hrzSeg=mk("div","seg");
+        [["단기 (6M)","단기","short"],["중기 (1Y)","중기","mid"],["장기 (2Y+)","장기","long"]].forEach(([label,k,cls])=>{
+          const bt=mk("button",""+((( posTags[p.ticker]||{}).horizon===k)?" on "+cls:""),label);
+          bt.onclick=(()=>{const kk=k;return ()=>{ if(!posTags[p.ticker]) posTags[p.ticker]={}; posTags[p.ticker].horizon=(posTags[p.ticker].horizon===kk?null:kk); savePosTags(); renderList(); }; })();
+          hrzSeg.appendChild(bt);
+        });
+        card.appendChild(hrzSeg);
+      }
       card.appendChild(labEl("상태")); card.appendChild(segEl(p));
       card.appendChild(labEl("메인 아이디어 (논거)"));
       const ta = document.createElement("textarea"); ta.className="f"; ta.rows=3; ta.value=p.idea||"";
@@ -648,11 +704,17 @@ function renderLedger(){
     updBtn.disabled=pricesBusy; updBtn.onclick=()=>fetchPrices(); ctrl.appendChild(updBtn);
     const togBtn = mk("button","btn sm"+(showReturns?" primary":""), showReturns?"수익률 숨기기":"수익률 보기");
     togBtn.onclick=()=>{ showReturns=!showReturns; renderLedger(); }; ctrl.appendChild(togBtn);
+    const ancBtn = mk("button","btn sm"+(anchorHidden?" primary":""), anchorHidden?"앵커 해제":"🔲 앵커 숨기기");
+    ancBtn.title="평단 대비 수익률을 숨겨 앵커링 효과를 방지합니다";
+    ancBtn.onclick=()=>{ anchorHidden=!anchorHidden; renderLedger(); }; ctrl.appendChild(ancBtn);
     hdr.appendChild(ctrl); sec.appendChild(hdr);
+    if(anchorHidden){ const ab=mk("div","anchor-banner","🔲 앵커링 방지 모드 · 평단 대비 수익률 숨김 — 지금 현금으로 새로 들어왔다면 이 비중 그대로 살 것인가?"); sec.appendChild(ab); }
 
     const t = document.createElement("table"); t.className="ledger-t";
-    if (showReturns){
+    if (showReturns && !anchorHidden){
       t.innerHTML = "<thead><tr><th>종목</th><th>현재가</th><th>수익률</th><th>평가금액</th><th>비중</th></tr></thead>";
+    } else if (showReturns && anchorHidden){
+      t.innerHTML = "<thead><tr><th>종목</th><th>현재가</th><th>비중</th></tr></thead>";
     } else {
       t.innerHTML = "<thead><tr><th>종목</th><th>비중</th></tr></thead>";
     }
@@ -660,7 +722,13 @@ function renderLedger(){
     board.positions.forEach(p=>{
       const w=Number(p.weight)||0;
       const tr=document.createElement("tr");
-      if (showReturns){
+      if (showReturns && anchorHidden){
+        const priceKey=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');
+        const cp=prices[priceKey]||null;
+        const cpCell=cp?`<td class="num">${fmtN(cp)}</td>`:`<td class="num">—</td>`;
+        const wcell=w>0?`<td class="num">${w.toFixed(1)}%</td>`:`<td class="num">—</td>`;
+        tr.innerHTML=`<td class="nm">${esc(p.name||"(이름 없음)")}</td>${cpCell}${wcell}`;
+      } else if (showReturns){
         const priceKey=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');
         const cp=prices[priceKey]||null;
         const priv=privatePositions[p.ticker]||{};
@@ -691,6 +759,9 @@ function renderLedger(){
       tf.innerHTML=`<tr><td>합계</td><td class="num">—</td>${totRet}<td class="num">${totCur>0?fmtN(Math.round(totCur)):"—"}</td><td class="num">100%</td></tr>`;
     } else {
       tf.innerHTML=`<tr><td>합계</td><td class="num">100%</td></tr>`;
+    }
+    if(showReturns && anchorHidden){
+      tf.innerHTML=`<tr><td>합계</td><td class="num">—</td><td class="num">100%</td></tr>`;
     }
     t.appendChild(tf); sec.appendChild(t);
 
@@ -882,6 +953,41 @@ function renderModal(){
   });
   const foot = mk("div","modal-foot"); const close = mk("button","btn","닫기"); close.onclick=()=>{ historyOpen=false; renderModal(); };
   foot.appendChild(close); m.appendChild(foot); bg.appendChild(m); host.appendChild(bg);
+}
+
+/* ── 투자 원칙 ── */
+const PHIL_CARDS = [
+  {icon:'📈', title:'좋아지는 초입에 사라', body:'역발상 X. 턴어라운드 확인 후 사도 늦지 않다. 상한가 날 사더라도 밸류가 싸면 OK.'},
+  {icon:'🔲', title:'앵커링 금지', body:'"오늘 현금으로 새로 들어왔다면 이걸 살 것인가?" — 평단을 지워라. 수익률 앵커링이 최악의 결정을 만든다.'},
+  {icon:'🎯', title:'집중 + 레버리지 없음', body:'3~4종목에 80%. 레버리지는 절대 쓰지 않는다. 안에서 계속 리밸런싱.'},
+  {icon:'⏱', title:'호라이즌을 명확히', body:'B2B IT: 1년 내 승부. B2C 소비재: 1~3년 갈 수 있다. 사기 전에 팔 시점까지 생각하라.'},
+  {icon:'🚫', title:'남과 비교하지 마라', body:'코스피도 안 본다. 비교 대상은 내 보유 종목끼리다. 포모에 흔들리면 잘못된 결정이 나온다.'},
+  {icon:'🔄', title:'꾸준함이 전부', body:'즐겁지 않으면 오래 못 한다. 김연아처럼: 이 경기 끝나면 다음 경기 준비. 운이 올 때 덜 터지면 된다.'},
+];
+function renderPhilosophy(){
+  const host = document.getElementById("principles-host"); if(!host) return;
+  host.innerHTML = "";
+  if(editing || stateName !== "ok") return;
+  const sec = mk("section","principles-section");
+  const hdr = mk("div","ledger-hdr");
+  hdr.appendChild(mk("span","ledger-hdr-text","투자 원칙"));
+  hdr.appendChild(mk("span","ledger-hdr-line",""));
+  const togBtn = mk("button","btn sm", principlesOpen?"접기":"펼치기");
+  togBtn.onclick=()=>{ principlesOpen=!principlesOpen; try{localStorage.setItem('principles_open',principlesOpen?'1':'0');}catch(e){} renderPhilosophy(); };
+  hdr.appendChild(togBtn); sec.appendChild(hdr);
+  if(principlesOpen){
+    const grid = mk("div","phil-cards");
+    PHIL_CARDS.forEach(p=>{ const card=mk("div","phil-card"); card.appendChild(mk("div","phil-icon",p.icon)); card.appendChild(mk("div","phil-title",p.title)); card.appendChild(mk("div","phil-body",p.body)); grid.appendChild(card); });
+    sec.appendChild(grid);
+    const myBox = mk("div","my-principles");
+    myBox.appendChild(mk("span","mp-lab","내 투자 원칙 (직접 작성)"));
+    const ta = document.createElement("textarea"); ta.className="f"; ta.rows=4;
+    ta.placeholder="나만의 투자 원칙을 적어두세요\n예: 시총 3천억 이하 중소형 위주\n예: 실적 2분기 연속 개선 확인 후 진입";
+    ta.value=myPrinciples;
+    ta.oninput=()=>{ myPrinciples=ta.value; saveMyPrinciples(); };
+    myBox.appendChild(ta); sec.appendChild(myBox);
+  }
+  host.appendChild(sec);
 }
 
 /* ── 캘린더 ── */
@@ -1156,6 +1262,10 @@ try {
   if (cachedKC) killConds = cachedKC;
   const cachedRev = JSON.parse(localStorage.getItem('reviewed_'+currentUser) || 'null');
   if (cachedRev) reviewed = cachedRev;
+  const cachedPT = JSON.parse(localStorage.getItem('pos_tags_'+currentUser) || 'null');
+  if (cachedPT) posTags = cachedPT;
+  myPrinciples = localStorage.getItem('my_principles_'+currentUser) || '';
+  principlesOpen = localStorage.getItem('principles_open') === '1';
 } catch(e) {}
 loadUsers().then(()=>{ renderUserTabs(); load(); });
 fetchCal();
