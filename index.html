@@ -183,6 +183,8 @@
   .cal-widget{ background:var(--card); border:1px solid var(--line); border-radius:13px; padding:14px 17px; margin-bottom:18px; }
   .cal-hdr{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
   .cal-hdr-lab{ font-family:var(--font-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2); }
+  .cal-legend{ font-size:11.5px; color:var(--ink-2); line-height:1.65; padding:8px 10px; margin:-2px 0 12px; background:#F8FAF7; border:1px solid var(--line-2); border-radius:8px; }
+  .cal-legend b{ font-family:var(--font-mono); color:var(--ink); }
   .cal-strip{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .cal-strip-date{ font-family:var(--font-mono); font-size:11.5px; font-weight:600; color:var(--ink-3); margin-bottom:6px; }
   .cal-chip{ display:inline-block; font-size:14px; font-weight:700; padding:5px 13px; border-radius:7px; }
@@ -1133,22 +1135,29 @@ function renderPhilosophy(){
 const SHIFT_INFO = {
   'D':  { bg:'#DBEAFE', color:'#1E40AF', time:'07:00 ~ 14:00' },
   'A':  { bg:'#FEF3C7', color:'#92400E', time:'14:00 ~ 20:00' },
-  'N':  { bg:'#1E293B', color:'#E2E8F0', time:'전날 20:00 ~ 07:00' },
+  'N':  { bg:'#1E293B', color:'#E2E8F0', time:'전날 20:00 ~ 당일 07:00' },
+  'AN': { bg:'#78350F', color:'#FEF3C7', time:'당일 14:00 ~ 다음날 07:00' },
   'DA': { bg:'#CFFAFE', color:'#0E7490', time:'07:00 ~ 20:00' },
-  'NA': { bg:'#312E81', color:'#FDE68A', time:'전날 20:00 ~ 07:00 / 14:00 ~ 20:00' },
+  'NA': { bg:'#312E81', color:'#FDE68A', time:'전날 20:00 ~ 당일 07:00 / 14:00 ~ 20:00' },
   'W':  { bg:'#EDE9FE', color:'#5B21B6', time:'' },
   '비번': { bg:'#EDE9FE', color:'#5B21B6', time:'' },
   '휴무': { bg:'#D1FAE5', color:'#065F46', time:'' },
   '휴가': { bg:'#D1FAE5', color:'#065F46', time:'' },
 };
+function getShiftCode(s){
+  const u = String(s||'').trim().toUpperCase();
+  for(const code of ['AN','DA','NA','D','A','N']){
+    if(u===code || u.startsWith(code+' ') || u.startsWith(code+'(')) return code;
+  }
+  if(u==='W'||u.startsWith('W(')) return 'W';
+  if(u.includes('비번')) return '비번';
+  if(u.includes('휴무')) return '휴무';
+  if(u.includes('휴가')) return '휴가';
+  return null;
+}
 function getShiftInfo(s){
-  const u = s.trim().toUpperCase();
-  if(u==='DA') return SHIFT_INFO['DA'];
-  if(u==='NA') return SHIFT_INFO['NA'];
-  if(u==='W'||u.startsWith('W(')) return SHIFT_INFO['W'];
-  if(u==='D'||u.startsWith('D ')) return SHIFT_INFO['D'];
-  if(u==='A'||u.startsWith('A ')) return SHIFT_INFO['A'];
-  if(u==='N'||u.startsWith('N ')) return SHIFT_INFO['N'];
+  const code = getShiftCode(s);
+  if(code && SHIFT_INFO[code]) return SHIFT_INFO[code];
   for(const [k,v] of Object.entries(SHIFT_INFO)) if(s.includes(k)) return v;
   return {bg:'#F3F4F6', color:'#374151', time:''};
 }
@@ -1158,17 +1167,21 @@ function getCombinedTime(evs){
   // Multiple separate events: compute combined range
   const HOURS={'D':[7*60,14*60],'A':[14*60,20*60]};
   const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
-  const hasN=evs.some(ev=>{const u=ev.summary.trim().toUpperCase();return u==='N'||u==='NA';});
-  const daEvs=evs.filter(ev=>{const u=ev.summary.trim().toUpperCase();return u==='D'||u.startsWith('D ')||u==='A'||u.startsWith('A ')||u==='DA';});
-  if(hasN&&daEvs.length===0) return '전날 20:00 ~ 07:00';
+  const codes=evs.map(ev=>getShiftCode(ev.summary));
+  if(codes.includes('AN')) return SHIFT_INFO['AN'].time;
+  if(codes.includes('NA')) return SHIFT_INFO['NA'].time;
+  const hasN=codes.includes('N');
+  const daEvs=evs.filter(ev=>['D','A','DA'].includes(getShiftCode(ev.summary)));
+  if(hasN&&daEvs.length===0) return SHIFT_INFO['N'].time;
   let s=Infinity,e=-Infinity;
   daEvs.forEach(ev=>{
-    const u=ev.summary.trim().toUpperCase();
-    const pairs=u==='DA'?[[7*60,20*60]]:u==='D'||u.startsWith('D ')?[[7*60,14*60]]:[[14*60,20*60]];
+    const code=getShiftCode(ev.summary);
+    const pairs=code==='DA'?[[7*60,20*60]]:code==='D'?[[7*60,14*60]]:[[14*60,20*60]];
     pairs.forEach(([a,b])=>{s=Math.min(s,a);e=Math.max(e,b);});
   });
   if(s===Infinity)return null;
-  return hm(s)+' ~ '+hm(e);
+  const dayTime=hm(s)+' ~ '+hm(e);
+  return hasN ? SHIFT_INFO['N'].time+' / '+dayTime : dayTime;
 }
 function getWeekMon(date){
   const d=new Date(date); d.setHours(0,0,0,0);
@@ -1253,6 +1266,25 @@ function evOnDate(ev, date){
   return check >= s && check <= e;
 }
 
+function getDisplayEvents(date){
+  const own = calEvents.filter(ev=>evOnDate(ev,date));
+  const next = new Date(date.getFullYear(),date.getMonth(),date.getDate()+1);
+  const nextHasN = calEvents
+    .filter(ev=>evOnDate(ev,next))
+    .some(ev=>['N','NA'].includes(getShiftCode(ev.summary)));
+  if(!nextHasN) return own;
+
+  // N is recorded on its morning-off date. A followed by tomorrow's N is AN today.
+  let combined=false;
+  return own.map(ev=>{
+    if(!combined && getShiftCode(ev.summary)==='A'){
+      combined=true;
+      return Object.assign({},ev,{summary:'AN',derived:true});
+    }
+    return ev;
+  });
+}
+
 async function fetchCal(){
   const host = document.getElementById('cal-host'); if(!host) return;
   host.innerHTML = '<div class="cal-widget"><span class="cal-loading">스케줄 불러오는 중…</span></div>';
@@ -1280,13 +1312,16 @@ function renderCal(){
   const togBtn = mk('button','btn sm', calOpen?'달력 닫기':'이번 달');
   togBtn.onclick=()=>{ calOpen=!calOpen; renderCal(); };
   hdr.appendChild(togBtn); w.appendChild(hdr);
+  const legend=mk('div','cal-legend');
+  legend.innerHTML='<b>D</b> 07:00~14:00 · <b>A</b> 14:00~20:00<br><b>N</b> 전날 20:00 출근 → 표시일 07:00 퇴근 · <b>AN</b> 표시일 A 출근 → 다음날 07:00 퇴근';
+  w.appendChild(legend);
 
   // 오늘/내일
   const strip = mk('div','cal-strip');
   [today, new Date(today.getTime()+864e5)].forEach(date=>{
     const col = mk('div','cal-strip-col');
     col.appendChild(mk('div','cal-strip-date',`${date.getMonth()+1}/${date.getDate()} (${DOW[date.getDay()]})`));
-    const evs = calEvents.filter(ev=>evOnDate(ev,date));
+    const evs = getDisplayEvents(date);
     if(evs.length){
       const chipRow=mk('div','cal-chip-row');
       evs.forEach(ev=>{
@@ -1321,7 +1356,7 @@ function renderCal(){
   weekDays.forEach(d=>{
     const td=document.createElement('td'); td.className='cal-week-td';
     if(d.toDateString()===today.toDateString()) td.classList.add('cal-week-today');
-    const evs=calEvents.filter(ev=>evOnDate(ev,d));
+    const evs=getDisplayEvents(d);
     if(evs.length){
       evs.forEach(ev=>{
         const info=getShiftInfo(ev.summary);
@@ -1357,7 +1392,7 @@ function renderCal(){
           const dn=mk('div','cal-dnum',String(date.getDate()));
           if(c===0) dn.classList.add('sun'); if(c===6) dn.classList.add('sat');
           cell.appendChild(dn);
-          calEvents.filter(ev=>evOnDate(ev,date)).forEach(ev=>{
+          getDisplayEvents(date).forEach(ev=>{
             const info=getShiftInfo(ev.summary);
             const chip=mk('div','cal-cell-chip',ev.summary); chip.style.background=info.bg; chip.style.color=info.color;
             cell.appendChild(chip);
