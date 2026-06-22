@@ -665,6 +665,7 @@ async function tryViewUnlock(v){
     } else viewPwError=true;
   }catch(e){ viewPwError=true; toast("확인 실패 — 네트워크/주소를 확인하세요"); }
   viewPwBusy=false; renderAll();
+  if(viewUnlocked) fetchPrices();
 }
 
 function renderOverall(){
