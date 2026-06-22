@@ -1734,7 +1734,7 @@ try {
   myPrinciples = localStorage.getItem('my_principles_'+currentUser) || '';
   principlesOpen = localStorage.getItem('principles_open') === '1';
 } catch(e) {}
-loadUsers().then(async()=>{ renderUserTabs(); await load(); await loadPortfolios(); });
+loadUsers().then(async()=>{ renderUserTabs(); await load(); await loadPortfolios(); if(stateName==='ok'&&board.weightBasis!=='current') fetchPrices(); });
 fetchCal();
 document.getElementById('site-updated').textContent = fmt(new Date(document.lastModified));
 </script>
