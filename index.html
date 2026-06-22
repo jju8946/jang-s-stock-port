@@ -1143,9 +1143,9 @@ async function submitComment(){
   commentBusy = true;
   const btn = document.getElementById('cmt-submit'); if(btn) btn.disabled=true;
   try{
-    const r = await fetch(API_URL+'?action=addcomment&nickname='+encodeURIComponent(nick)+'&content='+encodeURIComponent(body)+'&parentTs=0');
-    const res = await r.json();
+    const res = await apiPost({action:'addComment',nickname:nick,content:body,parentTs:0});
     if(res && res.ok){ toast('댓글이 등록됐어요'); document.getElementById('cmt-body').value=''; commentsLoaded=false; await loadComments(); }
+    else if(res&&res.error==='rate_limited') toast('잠시 후 다시 등록해주세요');
     else toast('등록 실패');
   }catch(e){ toast('등록 실패'); }
   commentBusy = false;
@@ -1161,9 +1161,9 @@ async function submitReply(parentTs){
   commentBusy = true;
   const btn = document.getElementById('rep-submit-'+parentTs); if(btn) btn.disabled=true;
   try{
-    const r = await fetch(API_URL+'?action=addcomment&nickname='+encodeURIComponent(nick)+'&content='+encodeURIComponent(body)+'&parentTs='+parentTs);
-    const res = await r.json();
+    const res = await apiPost({action:'addComment',nickname:nick,content:body,parentTs:parentTs});
     if(res && res.ok){ toast('답글이 등록됐어요'); replyTo=null; commentsLoaded=false; await loadComments(); }
+    else if(res&&res.error==='rate_limited') toast('잠시 후 다시 등록해주세요');
     else toast('등록 실패');
   }catch(e){ toast('등록 실패'); }
   commentBusy = false;
