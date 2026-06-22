@@ -307,6 +307,11 @@ let killConds = {}; // ticker → string — pre-mortem 조건 (localStorage)
 let reviewed = {};  // ticker → timestamp — 마지막 검토 시각 (localStorage)
 let calEvents = [], calLoaded = false, calOpen = false, calViewMonth = null;
 let anchorHidden = false;
+let viewUnlocked = false;        // 금액 보기 잠금 해제 여부
+let askingViewPw = false, viewPwError = false, viewPwBusy = false;
+let fullBoardCache = null;       // view unlock 시 서버에서 받은 전체 board 캐시
+let pwChangeModal = false;
+let pwChangeVal1 = '', pwChangeVal2 = '', pwChangeBusy = false, pwChangeError = '';
 let posTags = {};       // ticker → {type:'B2B'|'B2C'|'수주', horizon:'단기'|'중기'|'장기'}
 let myPrinciples = '';
 let principlesOpen = false;
@@ -382,6 +387,7 @@ function switchUser(id){
   if(id === currentUser) return;
   currentUser = id;
   editing=false; sessionPassword=null; askingPw=false; pwError=false;
+  viewUnlocked=false; askingViewPw=false; viewPwError=false; fullBoardCache=null; pwChangeModal=false;
   comments=[]; commentsLoaded=false; historyOpen=false; historyItems=null;
   try{
     const c = JSON.parse(localStorage.getItem('prices_cache_'+currentUser)||'null');
@@ -408,10 +414,10 @@ async function save(isAuto=false){
     if (res && res.ok){
       toast(isAuto ? "자동저장 완료" : "저장됨");
       saving=false;
-      if (!isAuto){ editing=false; await load(); return; }
+      if (!isAuto){ editing=false; fullBoardCache=null; await load(); return; }
       renderSavebar(); return;
     }
-    if (res && res.error === "auth"){ toast("비밀번호가 만료됐어요 — 다시 수정을 눌러주세요"); editing=false; sessionPassword=null; saving=false; await load(); return; }
+    if (res && res.error === "auth"){ toast("비밀번호가 만료됐어요 — 다시 수정을 눌러주세요"); editing=false; sessionPassword=null; fullBoardCache=null; saving=false; await load(); return; }
     toast("저장 실패 — 다시 시도해 주세요");
   }catch(e){ toast("저장 실패 — 네트워크/주소를 확인하세요"); }
   saving=false; renderSavebar();
@@ -432,10 +438,34 @@ async function quickSetStatus(i, status){
 }
 
 async function quickSave(){
+  // 공개 모드(publicBoard)에서 호출 시 avgPrice/shares 없어 데이터 손실 방지
+  let boardToSave = board;
+  if (!editing) {
+    const hasFinancialData = board.positions.some(p => (p.avgPrice||0) > 0 || (p.shares||0) > 0);
+    if (!hasFinancialData) {
+      if (fullBoardCache) {
+        const merged = JSON.parse(JSON.stringify(fullBoardCache));
+        board.positions.forEach((pub, i) => {
+          if (i < merged.positions.length && merged.positions[i].ticker === pub.ticker) {
+            merged.positions[i].status = pub.status;
+          }
+        });
+        merged.overall = board.overall;
+        boardToSave = merged;
+      } else {
+        const positions = board.positions.map(p => {
+          const priv = privatePositions[p.ticker] || {};
+          return { name:p.name, ticker:p.ticker, status:p.status, idea:p.idea, note:p.note, market:p.market,
+                   avgPrice:priv.avgPrice||0, shares:priv.shares||0 };
+        });
+        boardToSave = { title:board.title, overall:board.overall, updatedAt:board.updatedAt, positions };
+      }
+    }
+  }
   try{
-    const res = await apiPost({ action:"save", user:currentUser, password:sessionPassword, board:board });
+    const res = await apiPost({ action:"save", user:currentUser, password:sessionPassword, board:boardToSave });
     if(res && res.ok){ toast("저장됨"); }
-    else if(res && res.error==="auth"){ toast("인증 만료 — 다시 클릭해주세요"); sessionPassword=null; }
+    else if(res && res.error==="auth"){ toast("인증 만료 — 다시 클릭해주세요"); sessionPassword=null; fullBoardCache=null; }
     else toast("저장 실패");
   }catch(e){ toast("저장 실패"); }
 }
@@ -461,6 +491,19 @@ function renderActions(){
     const hist = mk("button","btn sm","기록"); hist.onclick=()=>openHistory();
     host.appendChild(hist); return;
   }
+
+  // 금액 보기 비밀번호 입력 중
+  if (askingViewPw){
+    const box = mk("div","pw");
+    const inp = document.createElement("input"); inp.type="password"; inp.placeholder="금액 보기 비밀번호"; inp.disabled=viewPwBusy;
+    inp.onkeydown = (e)=>{ if(e.key==="Enter") tryViewUnlock(inp.value); if(e.key==="Escape"){ askingViewPw=false; viewPwError=false; renderAll(); } };
+    const go = mk("button","btn primary sm", viewPwBusy?"확인 중…":"확인"); go.disabled=viewPwBusy; go.onclick=()=>tryViewUnlock(inp.value);
+    box.appendChild(inp); box.appendChild(go);
+    if (viewPwError) box.appendChild(mk("span","err","불일치"));
+    host.appendChild(box); setTimeout(()=>inp.focus(),0); return;
+  }
+
+  // 수정 비밀번호 입력 중
   if (askingPw){
     const box = mk("div","pw");
     const inp = document.createElement("input"); inp.type="password"; inp.placeholder="비밀번호"; inp.disabled=pwBusy;
@@ -470,7 +513,28 @@ function renderActions(){
     if (pwError) box.appendChild(mk("span","err","불일치"));
     host.appendChild(box); setTimeout(()=>inp.focus(),0); return;
   }
-  const edit = mk("button","btn","수정"); edit.onclick=()=>{ askingPw=true; pwError=false; renderAll(); };
+
+  // 금액 보기 잠금 해제 상태
+  if (viewUnlocked){
+    const lock = mk("button","btn sm","🔒 잠금"); lock.title="금액 숨기기";
+    lock.onclick=()=>{ viewUnlocked=false; privatePositions={}; fullBoardCache=null; sessionPassword=null; renderAll(); };
+    host.appendChild(lock);
+  } else {
+    const viewBtn = mk("button","btn","🔒 금액 보기");
+    viewBtn.onclick=()=>{ askingViewPw=true; viewPwError=false; renderAll(); };
+    host.appendChild(viewBtn);
+  }
+
+  // 수정 버튼 — viewUnlocked면 이미 인증된 세션 재활용
+  const edit = mk("button","btn","수정");
+  edit.onclick=()=>{
+    if(sessionPassword && fullBoardCache){
+      board = JSON.parse(JSON.stringify(fullBoardCache));
+      editing=true; renderAll();
+    } else {
+      askingPw=true; pwError=false; renderAll();
+    }
+  };
   host.appendChild(edit);
 }
 
@@ -496,6 +560,24 @@ async function tryUnlock(v){
     else pwError=true;
   }catch(e){ pwError=true; toast("확인 실패 — 네트워크/주소를 확인하세요"); }
   pwBusy=false; renderAll();
+}
+
+async function tryViewUnlock(v){
+  if (viewPwBusy) return;
+  viewPwBusy=true; viewPwError=false; renderActions();
+  try{
+    const res = await apiPost({ action:"auth", user:currentUser, password:v });
+    if (res && res.ok && res.board){
+      sessionPassword = v;
+      fullBoardCache = res.board;
+      const priv = {};
+      res.board.positions.forEach(p=>{ if(p.ticker) priv[p.ticker]={avgPrice:p.avgPrice, shares:p.shares}; });
+      privatePositions = priv;
+      localStorage.setItem('private_positions_'+currentUser, JSON.stringify(priv));
+      viewUnlocked=true; askingViewPw=false; viewPwError=false;
+    } else viewPwError=true;
+  }catch(e){ viewPwError=true; toast("확인 실패 — 네트워크/주소를 확인하세요"); }
+  viewPwBusy=false; renderAll();
 }
 
 function renderOverall(){
@@ -702,66 +784,83 @@ function renderLedger(){
     if (pricesAt) ctrl.appendChild(mk("span","price-at","업데이트 "+fmt(pricesAt)));
     const updBtn = mk("button","btn sm", pricesBusy?"조회 중…":"업데이트");
     updBtn.disabled=pricesBusy; updBtn.onclick=()=>fetchPrices(); ctrl.appendChild(updBtn);
-    const togBtn = mk("button","btn sm"+(showReturns?" primary":""), showReturns?"수익률 숨기기":"수익률 보기");
-    togBtn.onclick=()=>{ showReturns=!showReturns; renderLedger(); }; ctrl.appendChild(togBtn);
-    const ancBtn = mk("button","btn sm"+(anchorHidden?" primary":""), anchorHidden?"앵커 해제":"🔲 앵커 숨기기");
-    ancBtn.title="평단 대비 수익률을 숨겨 앵커링 효과를 방지합니다";
-    ancBtn.onclick=()=>{ anchorHidden=!anchorHidden; renderLedger(); }; ctrl.appendChild(ancBtn);
+    if (viewUnlocked){
+      const togBtn = mk("button","btn sm"+(showReturns?" primary":""), showReturns?"수익률 숨기기":"수익률 보기");
+      togBtn.onclick=()=>{ showReturns=!showReturns; renderLedger(); }; ctrl.appendChild(togBtn);
+      const ancBtn = mk("button","btn sm"+(anchorHidden?" primary":""), anchorHidden?"앵커 해제":"🔲 앵커 숨기기");
+      ancBtn.title="평단 대비 수익률을 숨겨 앵커링 효과를 방지합니다";
+      ancBtn.onclick=()=>{ anchorHidden=!anchorHidden; renderLedger(); }; ctrl.appendChild(ancBtn);
+    }
     hdr.appendChild(ctrl); sec.appendChild(hdr);
-    if(anchorHidden){ const ab=mk("div","anchor-banner","🔲 앵커링 방지 모드 · 평단 대비 수익률 숨김 — 지금 현금으로 새로 들어왔다면 이 비중 그대로 살 것인가?"); sec.appendChild(ab); }
+    if(anchorHidden && viewUnlocked){ const ab=mk("div","anchor-banner","🔲 앵커링 방지 모드 · 평단 대비 수익률 숨김 — 지금 현금으로 새로 들어왔다면 이 비중 그대로 살 것인가?"); sec.appendChild(ab); }
 
     const t = document.createElement("table"); t.className="ledger-t";
-    if (showReturns && !anchorHidden){
+
+    // 컬럼 헤더 결정 (viewUnlocked 여부로 분기)
+    if (viewUnlocked && showReturns && !anchorHidden){
+      t.innerHTML = "<thead><tr><th>종목</th><th>평단가</th><th>주수</th><th>매수금액</th><th>현재가</th><th>수익률</th><th>평가금액</th><th>비중</th></tr></thead>";
+    } else if (viewUnlocked && showReturns && anchorHidden){
+      t.innerHTML = "<thead><tr><th>종목</th><th>평단가</th><th>주수</th><th>매수금액</th><th>현재가</th><th>비중</th></tr></thead>";
+    } else if (viewUnlocked){
+      t.innerHTML = "<thead><tr><th>종목</th><th>평단가</th><th>주수</th><th>매수금액</th><th>비중</th></tr></thead>";
+    } else if (showReturns && !anchorHidden){
       t.innerHTML = "<thead><tr><th>종목</th><th>현재가</th><th>수익률</th><th>평가금액</th><th>비중</th></tr></thead>";
     } else if (showReturns && anchorHidden){
       t.innerHTML = "<thead><tr><th>종목</th><th>현재가</th><th>비중</th></tr></thead>";
     } else {
       t.innerHTML = "<thead><tr><th>종목</th><th>비중</th></tr></thead>";
     }
+
     const tb = document.createElement("tbody");
     board.positions.forEach(p=>{
       const w=Number(p.weight)||0;
+      const priv=privatePositions[p.ticker]||{};
+      const avg=Number(p.avgPrice)||Number(priv.avgPrice)||0;
+      const sh=Number(p.shares)||Number(priv.shares)||0;
+      const amt=avg*sh;
+      const priceKey=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');
+      const cp=prices[priceKey]||null;
       const tr=document.createElement("tr");
-      if (showReturns && anchorHidden){
-        const priceKey=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');
-        const cp=prices[priceKey]||null;
-        const cpCell=cp?`<td class="num">${fmtN(cp)}</td>`:`<td class="num">—</td>`;
-        const wcell=w>0?`<td class="num">${w.toFixed(1)}%</td>`:`<td class="num">—</td>`;
-        tr.innerHTML=`<td class="nm">${esc(p.name||"(이름 없음)")}</td>${cpCell}${wcell}`;
+      const nmCell=`<td class="nm">${esc(p.name||"(이름 없음)")}</td>`;
+      const wCell=w>0?`<td class="num"><span class="wcell"><span class="wbar" style="width:${w.toFixed(0)}%"></span><span class="wval">${w.toFixed(1)}%</span></span></td>`:`<td class="num">—</td>`;
+      const cpCell=cp?`<td class="num">${fmtN(cp)}</td>`:`<td class="num">—</td>`;
+      let retCell=`<td class="num">—</td>`, valCell=`<td class="num">—</td>`;
+      if(cp&&avg>0){ const ret=(cp-avg)/avg*100; const rc=ret>=0?"pos":"neg"; const rs=ret>=0?"+":""; retCell=`<td class="num"><span class="ret ${rc}">${rs}${ret.toFixed(2)}%</span></td>`; if(sh>0) valCell=`<td class="num">${fmtN(Math.round(cp*sh))}</td>`; }
+      const amtCells=`<td class="num">${fmtN(avg)}</td><td class="num">${fmtN(sh)}</td><td class="num">${fmtN(amt)}</td>`;
+      if (viewUnlocked && showReturns && !anchorHidden){
+        tr.innerHTML=`${nmCell}${amtCells}${cpCell}${retCell}${valCell}${wCell}`;
+      } else if (viewUnlocked && showReturns && anchorHidden){
+        tr.innerHTML=`${nmCell}${amtCells}${cpCell}${wCell}`;
+      } else if (viewUnlocked){
+        tr.innerHTML=`${nmCell}${amtCells}${wCell}`;
+      } else if (showReturns && anchorHidden){
+        tr.innerHTML=`${nmCell}${cpCell}${wCell}`;
       } else if (showReturns){
-        const priceKey=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');
-        const cp=prices[priceKey]||null;
-        const priv=privatePositions[p.ticker]||{};
-        const avg=Number(p.avgPrice)||Number(priv.avgPrice)||0;
-        const sh=Number(p.shares)||Number(priv.shares)||0;
-        const cpCell=cp?`<td class="num">${fmtN(cp)}</td>`:`<td class="num">—</td>`;
-        let retCell=`<td class="num">—</td>`, valCell=`<td class="num">—</td>`;
-        if(cp&&avg>0){
-          const ret=(cp-avg)/avg*100; const rc=ret>=0?"pos":"neg"; const rs=ret>=0?"+":"";
-          retCell=`<td class="num"><span class="ret ${rc}">${rs}${ret.toFixed(2)}%</span></td>`;
-          if(sh>0) valCell=`<td class="num">${fmtN(Math.round(cp*sh))}</td>`;
-        }
-        const wcell=w>0?`<td class="num">${w.toFixed(1)}%</td>`:`<td class="num">—</td>`;
-        tr.innerHTML=`<td class="nm">${esc(p.name||"(이름 없음)")}</td>${cpCell}${retCell}${valCell}${wcell}`;
+        tr.innerHTML=`${nmCell}${cpCell}${retCell}${valCell}${wCell}`;
       } else {
-        const wcell=w>0?`<td class="num">${w.toFixed(1)}%</td>`:`<td class="num">—</td>`;
-        tr.innerHTML=`<td class="nm">${esc(p.name||"(이름 없음)")}</td>`+wcell;
+        tr.innerHTML=`${nmCell}${wCell}`;
       }
       tb.appendChild(tr);
     });
     t.appendChild(tb);
+
     const tf=document.createElement("tfoot");
-    if(showReturns){
-      const totCost=board.positions.reduce((s,p)=>{const priv=privatePositions[p.ticker]||{};const avg=Number(p.avgPrice)||Number(priv.avgPrice)||0;const sh=Number(p.shares)||Number(priv.shares)||0;return s+avg*sh;},0);
-      const totCur=board.positions.reduce((s,p)=>{const pk=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');const cp=prices[pk];const priv=privatePositions[p.ticker]||{};const sh=Number(p.shares)||Number(priv.shares)||0;return s+(cp&&sh?cp*sh:0);},0);
-      let totRet=`<td class="num">—</td>`;
-      if(totCost>0&&totCur>0){const r=(totCur-totCost)/totCost*100;const rc=r>=0?"pos":"neg";const rs=r>=0?"+":"";totRet=`<td class="num"><span class="ret ${rc}">${rs}${r.toFixed(2)}%</span></td>`;}
+    const totCost=board.positions.reduce((s,p)=>{const priv=privatePositions[p.ticker]||{};const avg=Number(p.avgPrice)||Number(priv.avgPrice)||0;const sh=Number(p.shares)||Number(priv.shares)||0;return s+avg*sh;},0);
+    const totCur=board.positions.reduce((s,p)=>{const pk=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');const cp=prices[pk];const priv=privatePositions[p.ticker]||{};const sh=Number(p.shares)||Number(priv.shares)||0;return s+(cp&&sh?cp*sh:0);},0);
+    let totRet=`<td class="num">—</td>`;
+    if(totCost>0&&totCur>0){const r=(totCur-totCost)/totCost*100;const rc=r>=0?"pos":"neg";const rs=r>=0?"+":"";totRet=`<td class="num"><span class="ret ${rc}">${rs}${r.toFixed(2)}%</span></td>`;}
+    if (viewUnlocked && showReturns && !anchorHidden){
+      tf.innerHTML=`<tr><td>합계</td><td class="num">—</td><td class="num">—</td><td class="num">${fmtN(totCost)}</td><td class="num">—</td>${totRet}<td class="num">${totCur>0?fmtN(Math.round(totCur)):"—"}</td><td class="num">100%</td></tr>`;
+    } else if (viewUnlocked && showReturns && anchorHidden){
+      tf.innerHTML=`<tr><td>합계</td><td class="num">—</td><td class="num">—</td><td class="num">${fmtN(totCost)}</td><td class="num">—</td><td class="num">100%</td></tr>`;
+    } else if (viewUnlocked){
+      tf.innerHTML=`<tr><td>합계</td><td class="num">—</td><td class="num">—</td><td class="num">${fmtN(totCost)}</td><td class="num">100%</td></tr>`;
+    } else if (showReturns && anchorHidden){
+      tf.innerHTML=`<tr><td>합계</td><td class="num">—</td><td class="num">100%</td></tr>`;
+    } else if (showReturns){
       tf.innerHTML=`<tr><td>합계</td><td class="num">—</td>${totRet}<td class="num">${totCur>0?fmtN(Math.round(totCur)):"—"}</td><td class="num">100%</td></tr>`;
     } else {
       tf.innerHTML=`<tr><td>합계</td><td class="num">100%</td></tr>`;
-    }
-    if(showReturns && anchorHidden){
-      tf.innerHTML=`<tr><td>합계</td><td class="num">—</td><td class="num">100%</td></tr>`;
     }
     t.appendChild(tf); sec.appendChild(t);
 
@@ -920,9 +1019,11 @@ function renderSavebar(){
   if (!editing) return;
   const bar = mk("div","savebar"); bar.appendChild(mk("span","hint","메모 입력 후 1.5초 뒤 자동저장"));
   const right = mk("div","right");
-  const cancel = mk("button","btn","취소"); cancel.disabled=saving; cancel.onclick=()=>{ editing=false; load(); };
+  const cancel = mk("button","btn","취소"); cancel.disabled=saving; cancel.onclick=()=>{ editing=false; fullBoardCache=null; load(); };
+  const pwChgBtn = mk("button","btn sm","비밀번호 변경");
+  pwChgBtn.onclick=()=>{ pwChangeModal=true; pwChangeVal1=''; pwChangeVal2=''; pwChangeBusy=false; pwChangeError=''; renderModal(); };
   const savebtn = mk("button","btn primary", saving?"저장 중…":"저장"); savebtn.disabled=saving; savebtn.onclick=()=>save();
-  right.appendChild(cancel); right.appendChild(savebtn); bar.appendChild(right); host.appendChild(bar);
+  right.appendChild(cancel); right.appendChild(pwChgBtn); right.appendChild(savebtn); bar.appendChild(right); host.appendChild(bar);
 }
 
 /* ── 기록(백업) 모달 ── */
@@ -936,6 +1037,44 @@ async function openHistory(){
 }
 function renderModal(){
   const host = document.getElementById("modal-host"); host.innerHTML = "";
+
+  // 비밀번호 변경 모달
+  if (pwChangeModal){
+    const bg = mk("div","modal-bg"); bg.onclick=(e)=>{ if(e.target===bg){ pwChangeModal=false; renderModal(); } };
+    const m = mk("div","modal");
+    m.appendChild(mk("h3",null,"비밀번호 변경"));
+    m.appendChild(mk("div","sub","새 비밀번호를 설정하세요. 변경 후 모든 기기에서 새 비밀번호로 인증해야 합니다."));
+    m.appendChild(mk("span","field-lab","새 비밀번호"));
+    const inp1 = document.createElement("input"); inp1.className="f"; inp1.type="password"; inp1.placeholder="새 비밀번호 입력"; inp1.value=pwChangeVal1;
+    inp1.oninput=()=>{ pwChangeVal1=inp1.value; };
+    m.appendChild(inp1);
+    m.appendChild(mk("span","field-lab","새 비밀번호 확인"));
+    const inp2 = document.createElement("input"); inp2.className="f"; inp2.type="password"; inp2.placeholder="새 비밀번호 다시 입력"; inp2.value=pwChangeVal2;
+    inp2.oninput=()=>{ pwChangeVal2=inp2.value; };
+    m.appendChild(inp2);
+    if(pwChangeError){ const errEl=mk("div","",""); errEl.style.cssText="color:var(--broken);font-size:12px;font-family:var(--font-mono);margin-top:6px;"; errEl.textContent=pwChangeError; m.appendChild(errEl); }
+    const foot = mk("div","modal-foot");
+    const close = mk("button","btn","취소"); close.onclick=()=>{ pwChangeModal=false; pwChangeError=''; renderModal(); };
+    const chgBtn = mk("button","btn primary", pwChangeBusy?"변경 중…":"변경 완료"); chgBtn.disabled=pwChangeBusy;
+    chgBtn.onclick=async ()=>{
+      const np1=inp1.value.trim(), np2=inp2.value.trim();
+      if(!np1){ pwChangeError='새 비밀번호를 입력해주세요'; renderModal(); return; }
+      if(np1!==np2){ pwChangeError='비밀번호가 일치하지 않아요'; renderModal(); return; }
+      if(!sessionPassword){ pwChangeError='세션 만료 — 다시 수정을 눌러주세요'; renderModal(); return; }
+      pwChangeBusy=true; pwChangeError=''; renderModal();
+      try{
+        const res = await apiPost({ action:'changePassword', password:sessionPassword, newPassword:np1 });
+        if(res && res.ok){ sessionPassword=np1; pwChangeModal=false; pwChangeBusy=false; toast('비밀번호가 변경됐어요'); renderModal(); return; }
+        else pwChangeError = res&&res.error==='auth' ? '인증 실패' : '변경 실패 — 다시 시도해주세요';
+      }catch(e){ pwChangeError='네트워크 오류'; }
+      pwChangeBusy=false; renderModal();
+    };
+    foot.appendChild(close); foot.appendChild(chgBtn); m.appendChild(foot);
+    bg.appendChild(m); host.appendChild(bg);
+    setTimeout(()=>inp1.focus(),0);
+    return;
+  }
+
   if (!historyOpen) return;
   const bg = mk("div","modal-bg"); bg.onclick=(e)=>{ if(e.target===bg){ historyOpen=false; renderModal(); } };
   const m = mk("div","modal");
