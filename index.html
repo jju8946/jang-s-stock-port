@@ -49,6 +49,8 @@
   .ident{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
   .name{ font-size:17px; font-weight:700; letter-spacing:-.01em; }
   .ticker{ font-family:var(--font-mono); font-size:12.5px; color:var(--ink-3); font-weight:500; }
+  .ticker.invalid{ color:#e53e3e; }
+  .ticker-warn{ color:#e53e3e; font-size:11px; margin-left:4px; }
   .chip{ font-family:var(--font-mono); font-size:11.5px; font-weight:600; padding:3.5px 9px; border-radius:999px; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; flex:none; }
   .chip.valid{ color:var(--valid); background:var(--valid-bg);} .chip.watch{ color:var(--watch); background:var(--watch-bg);} .chip.broken{ color:var(--broken); background:var(--broken-bg);}
   .idea{ margin-top:11px; font-size:15.5px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
@@ -322,6 +324,7 @@ let sessionPassword = null;  // 검증된 비번을 세션 동안만 메모리 �
 let historyOpen = false, historyItems = null, historyLoading = false;
 let comments = [], commentsLoaded = false, commentBusy = false, replyTo = null;
 let prices = {}, pricesAt = null, showReturns = false, pricesBusy = false;
+let fxRates = {}; // { USD: 1350, JPY: 9.2 } — 원화 환산용 환율
 let allocationBasis = 'current'; // cost | current
 let autoSaveTimer = null;
 let autoSavePending = false;
@@ -351,20 +354,35 @@ function saveMyPrinciples(){ try{ localStorage.setItem('my_principles_'+currentU
 async function fetchPrices(){
   if (pricesBusy) return;
   pricesBusy = true; renderLedger();
-  const tickerKeys = [...new Set(board.positions.filter(p=>p.ticker).map(p=>(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0')))];
-  if (!tickerKeys.length){ pricesBusy=false; renderLedger(); return; }
+  const stockKeys = [...new Set(board.positions.filter(p=>p.ticker&&p.ticker!=='000000').map(getPriceKey))];
+  if (!stockKeys.length){ pricesBusy=false; renderLedger(); return; }
+
+  // 혼합 통화 포트폴리오면 환율 티커 추가
+  const foreignCurrencies = new Set(board.positions.filter(p=>p.ticker&&p.ticker!=='000000').map(p=>getMarketCurrency(p.market)));
+  foreignCurrencies.delete('KRW');
+  const fxKeys = [];
+  if(foreignCurrencies.has('USD')) fxKeys.push('CURRENCY:USDKRW');
+  if(foreignCurrencies.has('JPY')) fxKeys.push('CURRENCY:JPYKRW');
+  const tickerKeys = [...stockKeys, ...fxKeys];
+
+  function applyFx(pricesObj){
+    if(Number(pricesObj['CURRENCY:USDKRW'])>0) fxRates.USD=Number(pricesObj['CURRENCY:USDKRW']);
+    if(Number(pricesObj['CURRENCY:JPYKRW'])>0) fxRates.JPY=Number(pricesObj['CURRENCY:JPYKRW']);
+  }
+
   if(!viewUnlocked){
     try{
       const priceRes=await fetch(API_URL+'?action=prices&tickers='+encodeURIComponent(tickerKeys.join(','))).then(r=>r.json());
       if(!priceRes||!priceRes.ok) throw new Error('price fetch fail');
       prices=priceRes.prices||{};
+      applyFx(prices);
       pricesAt=priceRes.updatedAt?new Date(priceRes.updatedAt):null;
-      localStorage.setItem('prices_cache_'+currentUser,JSON.stringify({prices,pricesAt}));
+      localStorage.setItem('prices_cache_'+currentUser,JSON.stringify({prices,pricesAt,fxRates}));
       const data=await fetch(API_URL+'?user='+encodeURIComponent(currentUser)+'&_='+Date.now()).then(r=>r.json());
       if(!data||!Array.isArray(data.positions)) throw new Error('board fetch fail');
       board=data;
       const fresh=Number(priceRes.freshCount)||0;
-      toast(fresh+'/'+tickerKeys.length+'개 현재가 업데이트');
+      toast(fresh+'/'+stockKeys.length+'개 현재가 업데이트');
     }catch(e){ toast('현재비중 업데이트 실패'); }
     pricesBusy=false; renderAll(); return;
   }
@@ -373,10 +391,11 @@ async function fetchPrices(){
     const res = await r.json();
     if (res && res.ok){
       prices = res.prices || {};
+      applyFx(prices);
       pricesAt = res.updatedAt ? new Date(res.updatedAt) : new Date();
-      localStorage.setItem('prices_cache_'+currentUser, JSON.stringify({ prices, pricesAt }));
-      const found = res.freshCount==null ? Object.keys(prices).length : Number(res.freshCount)||0;
-      toast(found+'/'+tickerKeys.length+'개 현재가 업데이트');
+      localStorage.setItem('prices_cache_'+currentUser, JSON.stringify({ prices, pricesAt, fxRates }));
+      const found = res.freshCount==null ? stockKeys.length : Number(res.freshCount)||0;
+      toast(found+'/'+stockKeys.length+'개 현재가 업데이트');
     } else {
       toast('현재가 조회 실패');
     }
@@ -698,7 +717,7 @@ function renderList(){
     if (!editing){
       const head = mk("div","card-head"); const ident = mk("div","ident");
       ident.appendChild(mk("span","name", p.name || "(이름 없음)"));
-      if (p.ticker) ident.appendChild(mk("span","ticker", p.ticker));
+      if(p.ticker){ const bad=p.ticker==='000000'; ident.appendChild(mk("span","ticker"+(bad?" invalid":""),p.ticker)); if(bad) ident.appendChild(mk("span","ticker-warn","(정상적으로 입력해주세요)")); }
       const chip = mk("div","chip "+p.status, ""); chip.innerHTML = '<span class="dot '+p.status+'"></span>'+STATUS_KO[p.status];
       head.appendChild(ident); head.appendChild(chip); card.appendChild(head);
       if(p.ticker){ const ptags=posTags[p.ticker]||{}; if(ptags.type||ptags.horizon){ const tagRow=mk("div","pos-tags"); const tMap={'B2B':'b2b','B2C':'b2c','수주':'order'}; const hMap={'단기':'short','중기':'mid','장기':'long'}; const hLabel={'단기':'단기 6M','중기':'중기 1Y','장기':'장기 2Y+'}; if(ptags.type) tagRow.appendChild(mk("span","pos-tag "+(tMap[ptags.type]||''),ptags.type)); if(ptags.horizon) tagRow.appendChild(mk("span","pos-tag "+(hMap[ptags.horizon]||''),hLabel[ptags.horizon]||ptags.horizon)); card.appendChild(tagRow); } }
@@ -718,7 +737,7 @@ function renderList(){
 
       // ④ Price vs Thesis divergence
       if(p.ticker){
-        const priceKey=(p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');
+        const priceKey=getPriceKey(p);
         const cp=prices[priceKey]||null;
         const priv=privatePositions[p.ticker]||{};
         const avg=Number(p.avgPrice)||Number(priv.avgPrice)||0;
@@ -756,17 +775,21 @@ function renderList(){
     } else {
       const grid = mk("div","grid2");
       const c1 = document.createElement("div"); c1.appendChild(labEl("종목명")); c1.appendChild(inputEl(p.name,"예: 하나머티리얼즈", v=>p.name=v));
-      const c2 = document.createElement("div"); c2.appendChild(labEl("종목코드")); c2.appendChild(inputEl(p.ticker,"166090", v=>p.ticker=v, true));
+      const isUS=(p.market==='NYSE'||p.market==='NASDAQ'||p.market==='NYSEARCA'), isJP=p.market==='TYO';
+      const tickerPh=isUS?'AAPL':isJP?'7203':'166090';
+      const tickerLab=isUS?'티커 (알파벳)':isJP?'종목코드 (4자리)':'종목코드 (6자리)';
+      const c2 = document.createElement("div"); c2.appendChild(labEl(tickerLab)); c2.appendChild(inputEl(p.ticker,tickerPh, v=>p.ticker=v.toUpperCase(), true));
       grid.appendChild(c1); grid.appendChild(c2); card.appendChild(grid);
 
       const gridB = mk("div","grid2");
-      const b1 = document.createElement("div"); b1.appendChild(labEl("평균매수단가 (원)")); b1.appendChild(numInputEl(p.avgPrice,"45200", v=>p.avgPrice=v));
+      const priceUnit=isUS?'USD':isJP?'JPY':'원';
+      const b1 = document.createElement("div"); b1.appendChild(labEl("평균매수단가 ("+priceUnit+")")); b1.appendChild(numInputEl(p.avgPrice,isUS?"150.50":isJP?"5000":"45200", v=>p.avgPrice=v, isUS));
       const b2 = document.createElement("div"); b2.appendChild(labEl("주식수")); b2.appendChild(numInputEl(p.shares,"120", v=>p.shares=v));
       gridB.appendChild(b1); gridB.appendChild(b2); card.appendChild(gridB);
 
       card.appendChild(labEl("시장"));
       const mktSeg=mk("div","seg");
-      [["KOSPI","코스피"],["KOSDAQ","코스닥"]].forEach(([k,ko])=>{ const b=document.createElement("button"); b.textContent=ko; if((p.market||"KOSPI")===k) b.className="on valid"; b.onclick=()=>{ p.market=k; renderList(); }; mktSeg.appendChild(b); });
+      [["KOSPI","코스피"],["KOSDAQ","코스닥"],["NASDAQ","나스닥"],["NYSE","NYSE"],["NYSEARCA","ETF(ARCA)"],["TYO","일본"]].forEach(([k,ko])=>{ const b=document.createElement("button"); b.textContent=ko; if((p.market||"KOSPI")===k) b.className="on valid"; b.onclick=()=>{ p.market=k; renderList(); }; mktSeg.appendChild(b); });
       card.appendChild(mktSeg);
       if(p.ticker){
         card.appendChild(labEl("사업 유형 (태그)"));
@@ -823,18 +846,40 @@ function getPositionNumbers(p){
 }
 
 function getPriceKey(p){
-  return (p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+(p.ticker||'').padStart(6,'0');
+  const t=p.ticker||'';
+  if(p.market==='NYSE') return 'NYSE:'+t.toUpperCase();
+  if(p.market==='NASDAQ') return 'NASDAQ:'+t.toUpperCase();
+  if(p.market==='NYSEARCA') return 'NYSEARCA:'+t.toUpperCase();
+  if(p.market==='TYO') return 'TYO:'+t;
+  return (p.market==='KOSDAQ'?'KOSDAQ':'KRX')+':'+t.padStart(6,'0');
+}
+function getMarketCurrency(market){
+  if(market==='NYSE'||market==='NASDAQ'||market==='NYSEARCA') return 'USD';
+  if(market==='TYO') return 'JPY';
+  return 'KRW';
 }
 
 function getPortfolioMetrics(positions){
+  const activeCurrencies=[...new Set(positions.filter(p=>p.ticker&&p.ticker!=='000000').map(p=>getMarketCurrency(p.market)))];
+  const needsFx=activeCurrencies.length>1;
+  // 환율 로드 여부 — 미로드 시 로컬 통화 비교 폴백 (0% 표시 방지)
+  const fxReady=!needsFx||activeCurrencies.filter(c=>c!=='KRW').every(c=>fxRates[c]>0);
+  const useFx=needsFx&&fxReady;
   const rows = positions.map(p=>{
     const { avg, shares } = getPositionNumbers(p);
     const price = Number(prices[getPriceKey(p)]) || 0;
-    return { p, avg, shares, cost:avg*shares, price, current:price>0&&shares>0?price*shares:0 };
+    const curr=getMarketCurrency(p.market);
+    const rate=useFx?(curr==='KRW'?1:(fxRates[curr]||1)):1;
+    const costLocal=avg*shares;
+    const cost=useFx?costLocal*rate:costLocal;
+    const currentLocal=price>0&&shares>0?price*shares:0;
+    const current=useFx?currentLocal*rate:currentLocal;
+    return { p, avg, shares, cost, costLocal, price, current, curr, rate };
   });
   const holdings = rows.filter(r=>r.shares>0);
   const missingPriceCount = holdings.filter(r=>r.price<=0).length;
-  const currentComplete = holdings.length>0 && missingPriceCount===0;
+  const missingFxCount = needsFx&&!fxReady?holdings.filter(r=>r.curr!=='KRW').length:0;
+  const currentComplete = holdings.length>0 && missingPriceCount===0 && missingFxCount===0;
   const performanceComplete = currentComplete && holdings.every(r=>r.avg>0);
   return {
     rows,
@@ -890,7 +935,7 @@ function renderLedger(){
     t.innerHTML = "<thead><tr><th>종목</th><th>평균매수단가</th><th>주식수</th><th>매수금액</th><th>매수비중</th></tr></thead>";
     const tb = document.createElement("tbody");
     board.positions.forEach((p,i)=>{
-      const amt=metrics.rows[i].cost; const w=displayWeights[i];
+      const amt=metrics.rows[i].costLocal; const w=displayWeights[i];
       const wcell = w>0 ? `<td class="num"><span class="wcell"><span class="wbar" style="width:${w.toFixed(0)}%"></span><span class="wval">${w.toFixed(1)}%</span></span></td>` : `<td class="num">—</td>`;
       const tr=document.createElement("tr");
       tr.innerHTML = `<td class="nm">${esc(p.name||"(이름 없음)")}</td><td class="num">${fmtN(p.avgPrice||0)}</td><td class="num">${fmtN(p.shares||0)}</td><td class="num">${fmtN(amt)}</td>`+wcell;
@@ -1118,7 +1163,7 @@ function renderOtherPortfolio(item){
     card.appendChild(mk('div','spine '+status));
     const cardHead=mk('div','card-head'), ident=mk('div','ident');
     ident.appendChild(mk('span','name',p.name||'(이름 없음)'));
-    if(p.ticker) ident.appendChild(mk('span','ticker',p.ticker));
+    if(p.ticker){ const bad=p.ticker==='000000'; ident.appendChild(mk('span','ticker'+(bad?' invalid':''),p.ticker)); if(bad) ident.appendChild(mk('span','ticker-warn','(정상적으로 입력해주세요)')); }
     const chip=mk('div','chip '+status,''); chip.innerHTML='<span class="dot '+status+'"></span>'+STATUS_KO[status];
     cardHead.appendChild(ident); cardHead.appendChild(chip); card.appendChild(cardHead);
     card.appendChild(mk('div','idea'+(p.idea&&p.idea.trim()?'':' empty'),p.idea&&p.idea.trim()?p.idea:'메인 아이디어가 비어 있어요'));
@@ -1705,9 +1750,14 @@ function segEl(p){
   return seg;
 }
 function inputEl(val, ph, onin, mono){ const i=document.createElement("input"); i.className="f"+(mono?" mono":""); i.value=val||""; i.placeholder=ph; i.oninput=()=>onin(i.value); return i; }
-function numInputEl(val, ph, onin){
-  const i=document.createElement("input"); i.className="f mono"; i.type="text"; i.inputMode="numeric"; i.value=val>0?String(val):""; i.placeholder=ph;
-  i.oninput=()=>{ const clean=i.value.replace(/[^\d]/g,""); if(i.value!==clean) i.value=clean; const n=parseInt(clean,10); onin(isNaN(n)?0:n); }; return i;
+function numInputEl(val, ph, onin, allowDec){
+  const i=document.createElement("input"); i.className="f mono"; i.type="text"; i.inputMode=allowDec?"decimal":"numeric"; i.value=val>0?String(val):""; i.placeholder=ph;
+  i.oninput=()=>{
+    const clean=allowDec?i.value.replace(/[^\d.]/g,"").replace(/(\..*)\./g,"$1"):i.value.replace(/[^\d]/g,"");
+    if(i.value!==clean) i.value=clean;
+    const n=allowDec?parseFloat(clean):parseInt(clean,10);
+    onin(isNaN(n)?0:n);
+  }; return i;
 }
 function noticeEl(title, body){ const d=mk("div","notice"); d.appendChild(mk("b",null,title)); d.appendChild(mk("span",null,body)); return d; }
 function labEl(t){ const s=document.createElement("span"); s.className="field-lab"; s.textContent=t; return s; }
@@ -1720,7 +1770,7 @@ function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg
 
 try {
   const cached = JSON.parse(localStorage.getItem('prices_cache_'+currentUser) || 'null');
-  if (cached && cached.prices) { prices = cached.prices; pricesAt = new Date(cached.pricesAt); }
+  if (cached && cached.prices) { prices = cached.prices; pricesAt = new Date(cached.pricesAt); if(cached.fxRates) fxRates = cached.fxRates; }
   localStorage.removeItem('private_positions_'+currentUser);
   privatePositions = {};
   const cachedKC = JSON.parse(localStorage.getItem('killconds_'+currentUser) || 'null');
