@@ -374,8 +374,6 @@ async function fetchPrices(){
     if (res && res.ok){
       prices = res.prices || {};
       pricesAt = res.updatedAt ? new Date(res.updatedAt) : new Date();
-      const serverCurrent=board.weightBasis==='current'&&board.positions.some(p=>(Number(p.weight)||0)>0);
-      if(allocationBasis==='current' && !getPortfolioMetrics(board.positions).currentComplete && !serverCurrent) allocationBasis='cost';
       localStorage.setItem('prices_cache_'+currentUser, JSON.stringify({ prices, pricesAt }));
       const found = res.freshCount==null ? Object.keys(prices).length : Number(res.freshCount)||0;
       toast(found+'/'+tickerKeys.length+'개 현재가 업데이트');
